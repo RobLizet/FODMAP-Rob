@@ -270,6 +270,88 @@
   $('#txtClear').addEventListener('click', () => {
     $('#txtIngr').value = ''; $('#txtName').value = ''; pendingBarcode = '';
     $('#txtHint').textContent = ''; $('#textResult').replaceChildren();
+    setOcrStatus('', false);
+  });
+
+  // ---------- foto / OCR ----------
+  const ocrBtn = $('#ocrBtn');
+  const ocrInput = $('#ocrInput');
+  const ocrStatusEl = $('#ocrStatus');
+  let ocrWorker = null;
+
+  function setOcrStatus(t, show) {
+    ocrStatusEl.textContent = t;
+    ocrStatusEl.hidden = !show;
+  }
+
+  async function getOcrWorker() {
+    if (ocrWorker) return ocrWorker;
+    if (typeof Tesseract === 'undefined') throw new Error('OCR-bibliotheek kon niet geladen worden. Controleer je internetverbinding en probeer opnieuw.');
+    ocrWorker = await Tesseract.createWorker('nld+eng', 1, {
+      logger: m => {
+        if (!m || !m.status) return;
+        if (m.status === 'recognizing text') setOcrStatus('Tekst herkennen… ' + Math.round((m.progress || 0) * 100) + '%', true);
+        else setOcrStatus(m.status.charAt(0).toUpperCase() + m.status.slice(1) + '…', true);
+      }
+    });
+    return ocrWorker;
+  }
+
+  // Schaalt naar een redelijke breedte en zet om naar grijs + meer contrast: helpt OCR op gebogen verpakkingen.
+  function prepImage(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const maxW = 1800;
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const id = ctx.getImageData(0, 0, w, h);
+        const d = id.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          const v = Math.min(255, Math.max(0, (g - 128) * 1.4 + 128));
+          d[i] = d[i + 1] = d[i + 2] = v;
+        }
+        ctx.putImageData(id, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(c);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Kon de foto niet laden.')); };
+      img.src = url;
+    });
+  }
+
+  ocrBtn.addEventListener('click', () => ocrInput.click());
+  ocrInput.addEventListener('change', async () => {
+    const file = ocrInput.files && ocrInput.files[0];
+    ocrInput.value = '';
+    if (!file) return;
+    ocrBtn.disabled = true;
+    setOcrStatus('Foto verwerken…', true);
+    try {
+      const canvas = await prepImage(file);
+      const worker = await getOcrWorker();
+      const { data } = await worker.recognize(canvas);
+      const text = (data.text || '').replace(/\s*\n+\s*/g, ', ').replace(/,\s*,+/g, ',').trim();
+      if (!text) {
+        setOcrStatus('Geen tekst gevonden op de foto. Probeer een scherpere, rechte foto met goed licht.', true);
+      } else {
+        const existing = $('#txtIngr').value.trim();
+        $('#txtIngr').value = existing ? existing + ', ' + text : text;
+        setOcrStatus('Tekst herkend — controleer de lijst hieronder en corrigeer waar nodig voor je analyseert.', true);
+        $('#txtIngr').focus();
+      }
+    } catch (e) {
+      setOcrStatus('Herkenning mislukt: ' + (e && e.message ? e.message : 'onbekende fout') + '. Typ de ingrediënten anders zelf over.', true);
+    } finally {
+      ocrBtn.disabled = false;
+    }
   });
 
   // ---------- zoeken ----------

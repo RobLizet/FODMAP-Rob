@@ -147,10 +147,13 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     <div class="card">
       <h2 style="font-size:18px">Ingrediëntenlijst controleren</h2>
       <p id="txtHint" class="msg"></p>
+      <button id="ocrBtn" type="button" class="btn block" style="margin-bottom:10px">Foto van etiket</button>
+      <input id="ocrInput" type="file" accept="image/*" capture="environment" hidden>
+      <p id="ocrStatus" class="msg" hidden aria-live="polite"></p>
       <label class="lbl" for="txtName">Naam (optioneel)</label>
       <input id="txtName" type="text" placeholder="Bijv. tomatensoep">
       <label class="lbl" for="txtIngr">Ingrediënten</label>
-      <textarea id="txtIngr" placeholder="Plak of typ hier de ingrediënten, gescheiden door komma's"></textarea>
+      <textarea id="txtIngr" placeholder="Plak of typ hier de ingrediënten, gescheiden door komma's, of maak een foto van het etiket"></textarea>
       <div class="actions">
         <button id="txtGo" class="btn">Analyseer</button>
         <button id="txtPaste" class="btn ghost">Plakken</button>
@@ -205,6 +208,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
   </form>
 </dialog>
 
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="fodmap.js"></script>
 <script src="app.js"></script>
 </body>
