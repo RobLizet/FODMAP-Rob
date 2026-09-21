@@ -1,937 +1,211 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="nl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>Voedingstracker</title>
-<meta name="theme-color" content="#3D5C3E">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Voeding">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>FODMAP Scanner</title>
+<meta name="description" content="Scan een barcode of plak een ingrediëntenlijst en zie direct welke FODMAPs erin zitten.">
+<meta name="theme-color" content="#1f8a4c">
 <link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
-  :root{
-    --bg:#F7F5EF;
-    --surface:#FFFFFF;
-    --surface-2:#F0EEE6;
-    --text:#20241F;
-    --text-muted:#70766D;
-    --border:#E4E0D3;
-    --accent:#3D5C3E;
-    --accent-weak:#DCE6DC;
-    --protein:#A8462F;
-    --protein-weak:#F3E1DA;
-    --carbs:#B8860F;
-    --carbs-weak:#F3EAD3;
-    --fat:#3E6690;
-    --fat-weak:#DDE7EF;
-    --danger:#B23B3B;
-    --radius-lg:20px;
-    --radius-md:12px;
-    --radius-sm:8px;
-    --nav-h:64px;
-  }
-  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{height:100%;}
-  body{
-    margin:0;
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    background:var(--bg);
-    color:var(--text);
-    overscroll-behavior-y:none;
-  }
-  button, input, select{font-family:inherit;}
-  #app{
-    max-width:480px;
-    margin:0 auto;
-    height:100dvh;
-    display:flex;
-    flex-direction:column;
-    background:var(--bg);
-    position:relative;
-  }
-  header.topbar{
-    padding:18px 20px 10px;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    flex-shrink:0;
-  }
-  header.topbar h1{
-    font-size:22px;
-    font-weight:800;
-    letter-spacing:-0.02em;
-    margin:0;
-  }
-  .datenav{display:flex; align-items:center; gap:10px;}
-  .datenav button{
-    width:32px;height:32px;border-radius:50%;border:1px solid var(--border);
-    background:var(--surface); display:flex; align-items:center; justify-content:center;
-    color:var(--text); font-size:16px; cursor:pointer;
-  }
-  .datenav button:active{background:var(--surface-2);}
-  .datenav .datelabel{font-size:14px; color:var(--text-muted); min-width:96px; text-align:center;}
-  main#content{
-    flex:1;
-    overflow-y:auto;
-    padding:4px 20px calc(var(--nav-h) + 28px);
-    -webkit-overflow-scrolling:touch;
-  }
-  nav.tabbar{
-    position:absolute; left:0; right:0; bottom:0;
-    height:calc(var(--nav-h) + env(safe-area-inset-bottom));
-    padding-bottom:env(safe-area-inset-bottom);
-    background:var(--surface);
-    border-top:1px solid var(--border);
-    display:flex;
-    flex-shrink:0;
-  }
-  nav.tabbar button{
-    flex:1; border:none; background:none; cursor:pointer;
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:4px; color:var(--text-muted); font-size:11px; padding:6px 0;
-  }
-  nav.tabbar button svg{width:22px;height:22px;}
-  nav.tabbar button.active{color:var(--accent); font-weight:700;}
-  nav.tabbar button.active svg{stroke:var(--accent);}
+:root{
+  --bg:#f5f7f4;--card:#fff;--fg:#1c2620;--muted:#66736b;--line:#dfe6e0;--accent:#1f8a4c;
+  --high:#d64545;--mod:#c98410;--low:#2e9e5b;--unk:#7d8882;
+  --high-bg:#fbe9e9;--mod-bg:#fdf1dc;--low-bg:#e5f5ec;--unk-bg:#eceeed;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#121714;--card:#1b231e;--fg:#e8eee9;--muted:#95a39a;--line:#2b362f;--accent:#3fbf76;
+    --high:#f06a6a;--mod:#f0b04a;--low:#4cc985;
+    --high-bg:#3a1e1e;--mod-bg:#3a2f18;--low-bg:#183426;--unk-bg:#262c28;}
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  min-height:100dvh;padding-bottom:calc(70px + env(safe-area-inset-bottom))}
+button,input,textarea{font:inherit;color:inherit}
+h1,h2,h3,p{margin:0}
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;
+  padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--accent);color:#fff}
+.top h1{font-size:18px;font-weight:700}
+.top .btns{display:flex;gap:8px}
+.top button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:10px;padding:7px 12px;cursor:pointer}
+.banner{background:var(--mod-bg);color:var(--mod);padding:8px 16px;font-size:14px}
+main{max-width:640px;margin:0 auto;padding:14px 14px 0}
+.view{display:none}
+.view.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.muted{color:var(--muted)}
+.small{font-size:14px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:12px;
+  padding:12px 16px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+.btn.block{width:100%}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+input[type=text],input[type=search],input[type=number],textarea{width:100%;padding:12px;border-radius:12px;
+  border:1px solid var(--line);background:var(--card)}
+textarea{min-height:150px;resize:vertical}
+label.lbl{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
 
-  /* ring */
-  .ringwrap{display:flex; align-items:center; gap:20px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:20px; margin:10px 0 14px;}
-  .ring{position:relative; width:112px; height:112px; flex-shrink:0;}
-  .ring svg{transform:rotate(-90deg);}
-  .ring .ringnum{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
-  .ring .ringnum b{font-size:22px; letter-spacing:-0.02em; font-variant-numeric:tabular-nums;}
-  .ring .ringnum span{font-size:10px; color:var(--text-muted);}
-  .ringinfo{flex:1;}
-  .ringinfo .big{font-size:15px; font-weight:700; margin-bottom:2px;}
-  .ringinfo .sub{font-size:12.5px; color:var(--text-muted);}
+/* camera */
+.cam{position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:4/3;margin-bottom:12px}
+.cam video{width:100%;height:100%;object-fit:cover;display:block}
+.cam .frame{position:absolute;inset:22% 10%;border:3px solid rgba(255,255,255,.85);border-radius:14px}
+.cam .frame::after{content:"";position:absolute;left:6%;right:6%;top:50%;height:2px;background:#ff4d4d;box-shadow:0 0 8px #ff4d4d}
+.cam .stop{position:absolute;right:10px;top:10px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:10px;padding:6px 12px}
+.msg{font-size:14px;color:var(--muted);margin:8px 2px 12px}
 
-  .macrobars{display:flex; flex-direction:column; gap:10px; margin-bottom:18px;}
-  .macrobar{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 14px;}
-  .macrobar .row{display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;}
-  .macrobar .row .lbl{font-weight:700;}
-  .macrobar .row .val{color:var(--text-muted); font-variant-numeric:tabular-nums;}
-  .macrobar .track{height:6px; border-radius:4px; background:var(--surface-2); overflow:hidden;}
-  .macrobar .fill{height:100%; border-radius:4px;}
-  .macrobar.protein .fill{background:var(--protein);}
-  .macrobar.carbs .fill{background:var(--carbs);}
-  .macrobar.fat .fill{background:var(--fat);}
+/* resultaat */
+.prod{display:flex;gap:12px;align-items:center;margin-bottom:12px}
+.prod img{width:72px;height:72px;object-fit:contain;border-radius:10px;background:#fff;border:1px solid var(--line)}
+.prod h2{font-size:18px;line-height:1.25}
+.verdict{border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:2px;margin-bottom:12px;color:#fff}
+.verdict strong{font-size:19px}
+.verdict span{font-size:14px;opacity:.95}
+.verdict.high{background:var(--high)}
+.verdict.mod{background:#e39a1f;color:#2a1c00}
+.verdict.low{background:#2e9e5b}
+.verdict.unk{background:var(--unk)}
+.result h3{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 6px}
+.hits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.hit{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.hit-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.hit .small{margin-top:4px;color:var(--muted)}
+.dot{width:12px;height:12px;border-radius:50%;flex:none;background:var(--unk)}
+.dot.high{background:var(--high)}.dot.mod{background:var(--mod)}.dot.low{background:var(--low)}.dot.unsure{background:var(--unk)}
+.tags{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--unk-bg);color:var(--muted)}
+.ingr{line-height:1.9;font-size:15px}
+.tok{padding:1px 4px;border-radius:6px}
+.tok.high{background:var(--high-bg);color:var(--high);font-weight:600}
+.tok.mod{background:var(--mod-bg);color:var(--mod);font-weight:600}
+.tok.unsure{text-decoration:underline dotted var(--mod)}
+.actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.disc{font-size:12px;color:var(--muted);margin-top:12px}
 
-  .sectionhead{display:flex; align-items:center; justify-content:space-between; margin:22px 0 10px;}
-  .sectionhead h2{font-size:15px; font-weight:800; margin:0;}
-  .addbtn{
-    background:var(--accent); color:#fff; border:none; border-radius:999px;
-    padding:9px 16px; font-size:13.5px; font-weight:700; display:flex; align-items:center; gap:6px; cursor:pointer;
-  }
-  .addbtn:active{opacity:0.85;}
+/* lijsten */
+.list{list-style:none;margin:0;padding:0}
+.list li{display:flex;align-items:flex-start;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.list li:last-child{border-bottom:0}
+.list .grow{flex:1;min-width:0}
+.list .grow b{font-weight:600}
+.list button.plain{background:none;border:0;padding:0;text-align:left;width:100%;cursor:pointer}
+.x{background:none;border:0;color:var(--muted);font-size:20px;line-height:1;padding:4px 8px;cursor:pointer}
+.chips{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:14px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--accent);color:#fff;border-color:var(--accent)}
 
-  .entry{
-    display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--border);
-    border-radius:var(--radius-md); padding:12px 14px; margin-bottom:8px;
-  }
-  .entry .meta{flex:1; min-width:0;}
-  .entry .meta .name{font-weight:700; font-size:14px; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .entry .meta .macros{font-size:11.5px; color:var(--text-muted);}
-  .entry .kcal{font-weight:800; font-size:14px; font-variant-numeric:tabular-nums; white-space:nowrap;}
-  .entry .del{background:none; border:none; color:var(--text-muted); font-size:18px; padding:4px 6px; cursor:pointer; line-height:1;}
+/* nav */
+nav.nav{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;background:var(--card);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom)}
+nav.nav button{flex:1;background:none;border:0;padding:9px 0 8px;display:flex;flex-direction:column;align-items:center;gap:2px;
+  color:var(--muted);font-size:12px;cursor:pointer}
+nav.nav button[aria-current=page]{color:var(--accent);font-weight:700}
+nav.nav svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 
-  .empty{text-align:center; color:var(--text-muted); font-size:13.5px; padding:30px 10px; border:1px dashed var(--border); border-radius:var(--radius-md);}
-
-  /* forms */
-  .field{margin-bottom:14px;}
-  .field label{display:block; font-size:12.5px; font-weight:700; color:var(--text-muted); margin-bottom:6px;}
-  .field input, .field select{
-    width:100%; padding:12px 14px; border-radius:var(--radius-sm); border:1px solid var(--border);
-    background:var(--surface); font-size:15px; color:var(--text);
-  }
-  .field input:focus, .field select:focus{outline:2px solid var(--accent); outline-offset:1px;}
-  .fieldrow{display:flex; gap:10px;}
-  .fieldrow .field{flex:1;}
-  .primarybtn{
-    width:100%; background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm);
-    padding:14px; font-size:15px; font-weight:800; cursor:pointer;
-  }
-  .primarybtn:active{opacity:0.88;}
-  .secondarybtn{
-    width:100%; background:var(--surface-2); color:var(--text); border:none; border-radius:var(--radius-sm);
-    padding:13px; font-size:14px; font-weight:700; cursor:pointer; margin-top:8px;
-  }
-  .ghostrow{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-muted); margin:10px 0;}
-  .ghostrow input[type=checkbox]{width:17px;height:17px;}
-
-  /* modal / sheet */
-  .overlay{
-    position:absolute; inset:0; background:rgba(20,22,18,0.42); z-index:40;
-    display:flex; align-items:flex-end; opacity:0; pointer-events:none; transition:opacity .18s ease;
-  }
-  .overlay.open{opacity:1; pointer-events:auto;}
-  .sheet{
-    background:var(--bg); width:100%; max-height:88%; border-radius:22px 22px 0 0;
-    display:flex; flex-direction:column; transform:translateY(100%); transition:transform .22s ease;
-    padding-bottom:env(safe-area-inset-bottom);
-  }
-  .overlay.open .sheet{transform:translateY(0);}
-  .sheethead{display:flex; align-items:center; justify-content:space-between; padding:16px 18px 8px; flex-shrink:0;}
-  .sheethead h3{margin:0; font-size:16px; font-weight:800;}
-  .sheethead button.close{background:var(--surface-2); border:none; width:30px; height:30px; border-radius:50%; font-size:16px; cursor:pointer; color:var(--text);}
-  .sheetbody{padding:6px 18px 24px; overflow-y:auto;}
-
-  .modetabs{display:flex; gap:8px; margin:6px 0 18px;}
-  .modetabs button{
-    flex:1; padding:10px 8px; border-radius:999px; border:1px solid var(--border); background:var(--surface);
-    font-size:12.5px; font-weight:700; color:var(--text-muted); cursor:pointer;
-  }
-  .modetabs button.active{background:var(--accent); border-color:var(--accent); color:#fff;}
-
-  .favchip{
-    display:inline-flex; align-items:center; background:var(--surface); border:1px solid var(--border);
-    border-radius:999px; padding:8px 14px; font-size:12.5px; font-weight:600; margin:0 8px 8px 0; cursor:pointer;
-  }
-  .favwrap{display:flex; flex-wrap:wrap; margin-bottom:6px;}
-
-  .searchresult{
-    display:flex; align-items:center; justify-content:space-between; padding:12px 4px;
-    border-bottom:1px solid var(--border); cursor:pointer;
-  }
-  .searchresult .n{font-size:13.5px; font-weight:600; flex:1; padding-right:10px;}
-  .searchresult .k{font-size:12px; color:var(--text-muted); white-space:nowrap;}
-
-  .totalspreview{
-    display:flex; justify-content:space-between; background:var(--surface-2); border-radius:var(--radius-md);
-    padding:12px 14px; margin:4px 0 16px; font-size:12.5px;
-  }
-  .totalspreview div{text-align:center; flex:1;}
-  .totalspreview b{display:block; font-size:15px; font-variant-numeric:tabular-nums;}
-
-  .scanview{position:absolute; inset:0; background:#000; z-index:60; display:flex; flex-direction:column;}
-  .scanview video{flex:1; width:100%; object-fit:cover;}
-  .scanview .scanoverlay{position:absolute; top:0; left:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; pointer-events:none;}
-  .scanbox{width:70%; aspect-ratio:2/1; border:3px solid rgba(255,255,255,0.85); border-radius:16px;}
-  .scanview .scanbar{position:absolute; top:0; left:0; right:0; padding:16px; padding-top:calc(16px + env(safe-area-inset-top)); display:flex; justify-content:space-between; align-items:center;}
-  .scanview .scanbar button{background:rgba(0,0,0,0.5); color:#fff; border:none; width:36px; height:36px; border-radius:50%; font-size:18px;}
-  .scanview .scanmsg{position:absolute; bottom:40px; left:20px; right:20px; text-align:center; color:#fff; font-size:13.5px; background:rgba(0,0,0,0.5); padding:10px 14px; border-radius:var(--radius-md);}
-
-  .toast{
-    position:absolute; bottom:calc(var(--nav-h) + 16px); left:50%; transform:translateX(-50%);
-    background:#20241F; color:#fff; padding:10px 18px; border-radius:999px; font-size:13px; z-index:80;
-    opacity:0; pointer-events:none; transition:opacity .2s ease, transform .2s ease;
-  }
-  .toast.show{opacity:1; transform:translateX(-50%) translateY(-4px);}
-
-  /* weight tab */
-  .statrow{display:flex; gap:10px; margin:10px 0 16px;}
-  .statcard{flex:1; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 14px;}
-  .statcard .l{font-size:11px; color:var(--text-muted); margin-bottom:4px;}
-  .statcard .v{font-size:17px; font-weight:800; font-variant-numeric:tabular-nums;}
-  .chartwrap{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px 10px; margin-bottom:16px;}
-  .weightrow{display:flex; align-items:center; justify-content:space-between; padding:11px 14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:8px;}
-  .weightrow .d{font-size:13px; color:var(--text-muted);}
-  .weightrow .w{font-weight:800; font-size:14.5px; font-variant-numeric:tabular-nums;}
-
-  .settingscard{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; margin-bottom:16px;}
-  .settingscard h2{font-size:14px; margin:0 0 14px; font-weight:800;}
-  .settingscard p.hint{font-size:12px; color:var(--text-muted); margin:-8px 0 14px;}
-  .rowbtns{display:flex; gap:10px;}
-  .rowbtns button{flex:1;}
-
-  a{color:var(--accent);}
+dialog{border:0;border-radius:18px;padding:18px;max-width:440px;width:calc(100% - 28px);background:var(--card);color:var(--fg)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+.grp{display:flex;gap:10px;align-items:flex-start;padding:8px 0}
+.grp input{width:22px;height:22px;margin-top:2px;accent-color:var(--accent)}
 </style>
 </head>
 <body>
-<div id="app">
-  <header class="topbar" id="topbar"></header>
-  <main id="content"></main>
-  <nav class="tabbar" id="tabbar"></nav>
-  <div class="overlay" id="sheetOverlay"><div class="sheet" id="sheet"></div></div>
-  <div id="scanRoot"></div>
-  <div class="toast" id="toast"></div>
-</div>
 
-<script>
-(function(){
-"use strict";
+<header class="top">
+  <h1>FODMAP Scanner</h1>
+  <div class="btns">
+    <button id="installBtn" hidden>Installeer</button>
+    <button id="settingsBtn" aria-label="Instellingen">Instellingen</button>
+  </div>
+</header>
+<div id="offline" class="banner" hidden>Je bent offline: nieuwe barcodes opzoeken werkt niet, zoeken en historie wel.</div>
 
-/* ---------- storage ---------- */
-var DEFAULT_GOALS = {kcal:2000, protein:120, carbs:220, fat:65};
-var store = {
-  log: JSON.parse(localStorage.getItem('vt_log')||'[]'),
-  weights: JSON.parse(localStorage.getItem('vt_weights')||'[]'),
-  goals: JSON.parse(localStorage.getItem('vt_goals')||'null') || DEFAULT_GOALS,
-  favorites: JSON.parse(localStorage.getItem('vt_favorites')||'[]')
-};
-function persist(key){
-  var map = {log:'vt_log', weights:'vt_weights', goals:'vt_goals', favorites:'vt_favorites'};
-  localStorage.setItem(map[key], JSON.stringify(store[key]));
-}
+<main>
+  <!-- SCAN -->
+  <section id="view-scan" class="view active">
+    <div id="camBox" class="cam" hidden>
+      <video id="cam" playsinline muted></video>
+      <div class="frame"></div>
+      <button id="camStop" class="stop">Stop</button>
+    </div>
+    <div class="card">
+      <button id="camStart" class="btn block">Camera starten en scannen</button>
+      <p id="scanMsg" class="msg">Scan de barcode op de verpakking, of typ hem hieronder in.</p>
+      <form id="codeForm" class="row">
+        <input id="codeInput" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Barcode, bijv. 8710400123456" aria-label="Barcode">
+        <button class="btn" style="flex:0 0 auto">Zoek</button>
+      </form>
+    </div>
+    <div id="scanResult"></div>
+  </section>
 
-/* ---------- helpers ---------- */
-function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
-function toDateStr(d){
-  var y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
-  return y+'-'+m+'-'+day;
-}
-function parseDateStr(s){ var p=s.split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
-function addDays(dateStr, n){ var d=parseDateStr(dateStr); d.setDate(d.getDate()+n); return toDateStr(d); }
-function fmtDateLabel(dateStr){
-  var today = toDateStr(new Date());
-  var yest = addDays(today,-1);
-  if(dateStr===today) return 'Vandaag';
-  if(dateStr===yest) return 'Gisteren';
-  var d = parseDateStr(dateStr);
-  var days=['zo','ma','di','wo','do','vr','za'];
-  var months=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
-  return days[d.getDay()]+' '+d.getDate()+' '+months[d.getMonth()];
-}
-function esc(s){
-  return String(s==null?'':s).replace(/[&<>"']/g, function(c){
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
-  });
-}
-function round(n, dec){ dec=dec||0; var f=Math.pow(10,dec); return Math.round((+n||0)*f)/f; }
-function showToast(msg){
-  var t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(showToast._t);
-  showToast._t = setTimeout(function(){ t.classList.remove('show'); }, 1800);
-}
+  <!-- TEKST -->
+  <section id="view-text" class="view">
+    <div class="card">
+      <h2 style="font-size:18px">Ingrediëntenlijst controleren</h2>
+      <p id="txtHint" class="msg"></p>
+      <label class="lbl" for="txtName">Naam (optioneel)</label>
+      <input id="txtName" type="text" placeholder="Bijv. tomatensoep">
+      <label class="lbl" for="txtIngr">Ingrediënten</label>
+      <textarea id="txtIngr" placeholder="Plak of typ hier de ingrediënten, gescheiden door komma's"></textarea>
+      <div class="actions">
+        <button id="txtGo" class="btn">Analyseer</button>
+        <button id="txtPaste" class="btn ghost">Plakken</button>
+        <button id="txtClear" class="btn ghost">Wissen</button>
+      </div>
+    </div>
+    <div id="textResult"></div>
+  </section>
 
-/* ---------- app state ---------- */
-var state = {
-  tab: 'vandaag',
-  viewDate: toDateStr(new Date())
-};
+  <!-- ZOEKEN -->
+  <section id="view-search" class="view">
+    <div class="card">
+      <input id="q" type="search" placeholder="Zoek een ingrediënt, bijv. knoflook" aria-label="Zoeken">
+      <div class="chips" id="lvlChips">
+        <button class="chip" data-l="all" aria-pressed="true">Alles</button>
+        <button class="chip" data-l="high" aria-pressed="false">Hoog</button>
+        <button class="chip" data-l="moderate" aria-pressed="false">Matig</button>
+        <button class="chip" data-l="low" aria-pressed="false">Laag</button>
+      </div>
+      <ul id="searchList" class="list"></ul>
+    </div>
+  </section>
 
-/* ---------- icons ---------- */
-var ICONS = {
-  today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/></svg>',
-  scale: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10.5" width="4.5" height="8" rx="1"/><rect x="15.5" y="10.5" width="4.5" height="8" rx="1"/><path d="M6.2 10.5V7a2 2 0 0 1 2-2h7.6a2 2 0 0 1 2 2v3.5"/></svg>',
-  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h9"/><circle cx="16.5" cy="7" r="2"/><path d="M20 17h-9"/><circle cx="7.5" cy="17" r="2"/></svg>',
-  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
-  camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7H8l1-2h6l1 2h2.5A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.4"/></svg>',
-  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M20 20l-5-5"/></svg>',
-  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"/></svg>'
-};
+  <!-- HISTORIE -->
+  <section id="view-history" class="view">
+    <div id="histResult"></div>
+    <div class="card">
+      <div class="row" style="align-items:center;margin-bottom:6px">
+        <h2 style="font-size:18px">Gescand</h2>
+        <button id="histClear" class="btn ghost" style="flex:0 0 auto;padding:8px 12px">Wis alles</button>
+      </div>
+      <ul id="histList" class="list"></ul>
+      <p id="histEmpty" class="muted small" hidden>Nog niets gescand.</p>
+    </div>
+  </section>
+</main>
 
-/* ================= RENDER: SHELL ================= */
-function renderShell(){
-  var tabs = [
-    {id:'vandaag', label:'Vandaag', icon:ICONS.today},
-    {id:'gewicht', label:'Gewicht', icon:ICONS.scale},
-    {id:'instellingen', label:'Doelen', icon:ICONS.settings}
-  ];
-  var nav = document.getElementById('tabbar');
-  nav.innerHTML = tabs.map(function(t){
-    return '<button data-tab="'+t.id+'" class="'+(state.tab===t.id?'active':'')+'">'+t.icon+'<span>'+t.label+'</span></button>';
-  }).join('');
-  nav.querySelectorAll('button').forEach(function(b){
-    b.addEventListener('click', function(){ state.tab=b.dataset.tab; renderAll(); });
-  });
-}
+<nav class="nav" aria-label="Hoofdmenu">
+  <button data-view="scan" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>Scan</button>
+  <button data-view="text"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6"/></svg>Tekst</button>
+  <button data-view="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Zoeken</button>
+  <button data-view="history"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Historie</button>
+</nav>
 
-function renderTopbar(){
-  var el = document.getElementById('topbar');
-  if(state.tab==='vandaag'){
-    el.innerHTML =
-      '<h1>Voeding</h1>'+
-      '<div class="datenav">'+
-        '<button id="dPrev">&#8249;</button>'+
-        '<span class="datelabel">'+fmtDateLabel(state.viewDate)+'</span>'+
-        '<button id="dNext" '+(state.viewDate>=toDateStr(new Date())?'disabled style="opacity:.3"':'')+'>&#8250;</button>'+
-      '</div>';
-    document.getElementById('dPrev').onclick=function(){ state.viewDate=addDays(state.viewDate,-1); renderAll(); };
-    document.getElementById('dNext').onclick=function(){ if(state.viewDate<toDateStr(new Date())){ state.viewDate=addDays(state.viewDate,1); renderAll(); } };
-  } else if(state.tab==='gewicht'){
-    el.innerHTML = '<h1>Gewicht</h1><div></div>';
-  } else {
-    el.innerHTML = '<h1>Doelen</h1><div></div>';
-  }
-}
+<dialog id="settings">
+  <form method="dialog">
+    <h2 style="font-size:19px;margin-bottom:6px">Instellingen</h2>
+    <p class="small muted">Vink aan waar jij gevoelig voor bent. Alleen die FODMAP-groepen tellen mee in de uitslag.</p>
+    <div id="groupBox" style="margin:10px 0"></div>
+    <p class="disc">Deze app is indicatief en gebaseerd op algemene FODMAP-kennis. Portiegroottes worden niet beoordeeld; gebruik daarvoor de Monash FODMAP-app. Geen medisch advies: bespreek je dieet met een diëtist.</p>
+    <div class="actions"><button class="btn">Sluiten</button></div>
+  </form>
+</dialog>
 
-function renderAll(){
-  renderShell();
-  renderTopbar();
-  var c = document.getElementById('content');
-  if(state.tab==='vandaag') c.innerHTML = renderVandaag();
-  else if(state.tab==='gewicht') c.innerHTML = renderGewicht();
-  else c.innerHTML = renderInstellingen();
-  bindTabEvents();
-}
-
-/* ================= VANDAAG ================= */
-function dayTotals(dateStr){
-  var entries = store.log.filter(function(e){ return e.date===dateStr; });
-  var t = {kcal:0, protein:0, carbs:0, fat:0};
-  entries.forEach(function(e){ t.kcal+=e.kcal; t.protein+=e.protein; t.carbs+=e.carbs; t.fat+=e.fat; });
-  return {entries:entries, totals:t};
-}
-
-function ringSvg(pct, colorVar){
-  pct = Math.max(0, Math.min(1, pct));
-  var r=48, c=2*Math.PI*r;
-  return '<svg width="112" height="112" viewBox="0 0 112 112">'+
-    '<circle cx="56" cy="56" r="'+r+'" fill="none" stroke="var(--surface-2)" stroke-width="10"/>'+
-    '<circle cx="56" cy="56" r="'+r+'" fill="none" stroke="'+colorVar+'" stroke-width="10" stroke-linecap="round" '+
-      'stroke-dasharray="'+c+'" stroke-dashoffset="'+(c*(1-pct))+'"/>'+
-  '</svg>';
-}
-
-function renderVandaag(){
-  var d = dayTotals(state.viewDate);
-  var g = store.goals;
-  var kcalPct = g.kcal>0 ? d.totals.kcal/g.kcal : 0;
-  var over = d.totals.kcal > g.kcal;
-  var html = '';
-
-  html += '<div class="ringwrap">'+
-    '<div class="ring">'+ringSvg(kcalPct, over?'var(--danger)':'var(--accent)')+
-      '<div class="ringnum"><b>'+round(d.totals.kcal)+'</b><span>van '+g.kcal+' kcal</span></div>'+
-    '</div>'+
-    '<div class="ringinfo">'+
-      '<div class="big">'+(over ? ('+'+round(d.totals.kcal-g.kcal)+' kcal boven doel') : (round(g.kcal-d.totals.kcal)+' kcal over'))+'</div>'+
-      '<div class="sub">'+d.entries.length+' item'+(d.entries.length===1?'':'s')+' gelogd</div>'+
-    '</div>'+
-  '</div>';
-
-  html += '<div class="macrobars">'+
-    macrobar('protein','Eiwitten', d.totals.protein, g.protein)+
-    macrobar('carbs','Koolhydraten', d.totals.carbs, g.carbs)+
-    macrobar('fat','Vet', d.totals.fat, g.fat)+
-  '</div>';
-
-  html += '<div class="sectionhead"><h2>Gelogd</h2>'+
-    '<button class="addbtn" id="btnAddFood">'+ICONS.plus+' Toevoegen</button></div>';
-
-  if(d.entries.length===0){
-    html += '<div class="empty">Nog niets gelogd op deze dag.<br>Tik op "Toevoegen" om te beginnen.</div>';
-  } else {
-    html += d.entries.slice().reverse().map(function(e){
-      return '<div class="entry">'+
-        '<div class="meta"><div class="name">'+esc(e.name)+'</div>'+
-        '<div class="macros">'+esc(e.amount)+'g &middot; E '+round(e.protein)+'g &middot; K '+round(e.carbs)+'g &middot; V '+round(e.fat)+'g</div></div>'+
-        '<div class="kcal">'+round(e.kcal)+'</div>'+
-        '<button class="del" data-del="'+e.id+'">&times;</button>'+
-      '</div>';
-    }).join('');
-  }
-  return html;
-}
-
-function macrobar(cls, label, val, goal){
-  var pct = goal>0 ? Math.min(1, val/goal) : 0;
-  return '<div class="macrobar '+cls+'"><div class="row"><span class="lbl">'+label+'</span>'+
-    '<span class="val">'+round(val)+' / '+goal+' g</span></div>'+
-    '<div class="track"><div class="fill" style="width:'+(pct*100)+'%"></div></div></div>';
-}
-
-/* ================= GEWICHT ================= */
-function renderGewicht(){
-  var ws = store.weights.slice().sort(function(a,b){ return a.date<b.date?-1:1; });
-  var html = '';
-
-  if(ws.length>=1){
-    var last = ws[ws.length-1];
-    var first = ws[0];
-    var delta = last.weight-first.weight;
-    var sevenAgo = addDays(toDateStr(new Date()),-7);
-    var recent = ws.filter(function(w){return w.date>=sevenAgo;});
-    var trend = recent.length>=2 ? (recent[recent.length-1].weight-recent[0].weight) : null;
-    html += '<div class="statrow">'+
-      '<div class="statcard"><div class="l">Laatste</div><div class="v">'+last.weight+' kg</div></div>'+
-      '<div class="statcard"><div class="l">Sinds start</div><div class="v">'+(delta>=0?'+':'')+round(delta,1)+' kg</div></div>'+
-      '<div class="statcard"><div class="l">7 dagen</div><div class="v">'+(trend===null?'&mdash;':(trend>=0?'+':'')+round(trend,1)+' kg')+'</div></div>'+
-    '</div>';
-    html += '<div class="chartwrap">'+weightChart(ws)+'</div>';
-  }
-
-  html += '<div class="sectionhead"><h2>Nieuwe meting</h2></div>';
-  html += '<div class="field"><div class="fieldrow">'+
-    '<div class="field"><label>Datum</label><input type="date" id="wDate" value="'+toDateStr(new Date())+'" max="'+toDateStr(new Date())+'"></div>'+
-    '<div class="field"><label>Gewicht (kg)</label><input type="number" id="wVal" step="0.1" inputmode="decimal" placeholder="bv. 78.4"></div>'+
-  '</div></div>';
-  html += '<button class="primarybtn" id="btnAddWeight">Opslaan</button>';
-
-  html += '<div class="sectionhead"><h2>Geschiedenis</h2></div>';
-  if(ws.length===0){
-    html += '<div class="empty">Nog geen metingen. Voeg hierboven je eerste gewicht toe.</div>';
-  } else {
-    html += ws.slice().reverse().map(function(w){
-      return '<div class="weightrow"><span class="d">'+fmtDateLabel(w.date)+'</span>'+
-        '<span class="w">'+w.weight+' kg</span>'+
-        '<button class="del" data-delw="'+w.id+'">&times;</button></div>';
-    }).join('');
-  }
-  return html;
-}
-
-function weightChart(ws){
-  var pts = ws.slice(-60);
-  if(pts.length<2){
-    return '<div style="text-align:center;color:var(--text-muted);font-size:12.5px;padding:20px 0;">Nog te weinig data voor een grafiek (minimaal 2 metingen).</div>';
-  }
-  var W=300,H=120,pad=10;
-  var vals = pts.map(function(p){return p.weight;});
-  var min=Math.min.apply(null,vals), max=Math.max.apply(null,vals);
-  if(min===max){ min-=1; max+=1; }
-  var stepX = (W-pad*2)/(pts.length-1);
-  var coords = pts.map(function(p,i){
-    var x = pad + i*stepX;
-    var y = H-pad - ((p.weight-min)/(max-min))*(H-pad*2);
-    return [x,y];
-  });
-  var path = coords.map(function(c,i){ return (i===0?'M':'L')+c[0].toFixed(1)+','+c[1].toFixed(1); }).join(' ');
-  var areaPath = path + ' L'+coords[coords.length-1][0].toFixed(1)+','+(H-pad)+' L'+coords[0][0].toFixed(1)+','+(H-pad)+' Z';
-  var dots = coords.map(function(c,i){
-    return i===coords.length-1 ? '<circle cx="'+c[0].toFixed(1)+'" cy="'+c[1].toFixed(1)+'" r="4" fill="var(--accent)"/>' : '';
-  }).join('');
-  return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="120" preserveAspectRatio="none">'+
-    '<path d="'+areaPath+'" fill="var(--accent-weak)" stroke="none"/>'+
-    '<path d="'+path+'" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>'+
-    dots+
-  '</svg>';
-}
-
-/* ================= INSTELLINGEN ================= */
-function renderInstellingen(){
-  var g = store.goals;
-  var html = '';
-  html += '<div class="settingscard"><h2>Dagelijkse doelen</h2>'+
-    '<p class="hint">Gebruikt voor de ring en de balken op het Vandaag-scherm.</p>'+
-    '<div class="field"><label>Calorie&euml;n (kcal)</label><input type="number" id="gKcal" value="'+g.kcal+'"></div>'+
-    '<div class="fieldrow">'+
-      '<div class="field"><label>Eiwitten (g)</label><input type="number" id="gProtein" value="'+g.protein+'"></div>'+
-      '<div class="field"><label>Koolhydraten (g)</label><input type="number" id="gCarbs" value="'+g.carbs+'"></div>'+
-      '<div class="field"><label>Vet (g)</label><input type="number" id="gFat" value="'+g.fat+'"></div>'+
-    '</div>'+
-    '<button class="primarybtn" id="btnSaveGoals">Doelen opslaan</button>'+
-  '</div>';
-
-  html += '<div class="settingscard"><h2>Gegevens</h2>'+
-    '<p class="hint">Alles staat lokaal op dit apparaat opgeslagen. Maak regelmatig een back-up.</p>'+
-    '<div class="rowbtns">'+
-      '<button class="secondarybtn" id="btnExport">Exporteren</button>'+
-      '<button class="secondarybtn" id="btnImport">Importeren</button>'+
-    '</div>'+
-    '<input type="file" id="importFile" accept="application/json" style="display:none">'+
-    '<button class="secondarybtn" id="btnWipe" style="margin-top:10px;color:var(--danger);">Alles wissen</button>'+
-  '</div>';
-
-  html += '<div class="settingscard"><h2>Favorieten beheren</h2>'+
-    (store.favorites.length===0 ? '<p class="hint">Nog geen favorieten. Vink "bewaar als favoriet" aan bij het toevoegen van een product.</p>' :
-      store.favorites.map(function(f){
-        return '<div class="weightrow"><span class="d">'+esc(f.name)+'</span>'+
-          '<button class="del" data-delfav="'+f.id+'">&times;</button></div>';
-      }).join('')
-    )+
-  '</div>';
-
-  html += '<p style="text-align:center;font-size:11.5px;color:var(--text-muted);">Voedingstracker &middot; data via Open Food Facts</p>';
-  return html;
-}
-
-/* ================= EVENT BINDING PER TAB ================= */
-function bindTabEvents(){
-  if(state.tab==='vandaag'){
-    var addBtn = document.getElementById('btnAddFood');
-    if(addBtn) addBtn.onclick = openAddFoodSheet;
-    document.querySelectorAll('[data-del]').forEach(function(b){
-      b.onclick = function(){
-        if(!confirm('Dit item verwijderen?')) return;
-        store.log = store.log.filter(function(e){ return e.id!==b.dataset.del; });
-        persist('log'); renderAll();
-      };
-    });
-  } else if(state.tab==='gewicht'){
-    document.getElementById('btnAddWeight').onclick = function(){
-      var date = document.getElementById('wDate').value || toDateStr(new Date());
-      var val = parseFloat(document.getElementById('wVal').value);
-      if(!val || val<=0){ showToast('Vul een geldig gewicht in'); return; }
-      var existing = store.weights.find(function(w){return w.date===date;});
-      if(existing){ existing.weight = val; }
-      else { store.weights.push({id:uid(), date:date, weight:val}); }
-      persist('weights'); renderAll(); showToast('Gewicht opgeslagen');
-    };
-    document.querySelectorAll('[data-delw]').forEach(function(b){
-      b.onclick = function(){
-        if(!confirm('Deze meting verwijderen?')) return;
-        store.weights = store.weights.filter(function(w){ return w.id!==b.dataset.delw; });
-        persist('weights'); renderAll();
-      };
-    });
-  } else if(state.tab==='instellingen'){
-    document.getElementById('btnSaveGoals').onclick = function(){
-      store.goals = {
-        kcal: parseFloat(document.getElementById('gKcal').value)||0,
-        protein: parseFloat(document.getElementById('gProtein').value)||0,
-        carbs: parseFloat(document.getElementById('gCarbs').value)||0,
-        fat: parseFloat(document.getElementById('gFat').value)||0
-      };
-      persist('goals'); showToast('Doelen opgeslagen'); renderAll();
-    };
-    document.getElementById('btnExport').onclick = function(){
-      var blob = new Blob([JSON.stringify(store,null,2)], {type:'application/json'});
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url; a.download = 'voedingstracker-backup-'+toDateStr(new Date())+'.json';
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-    };
-    document.getElementById('btnImport').onclick = function(){
-      document.getElementById('importFile').click();
-    };
-    document.getElementById('importFile').onchange = function(e){
-      var file = e.target.files[0]; if(!file) return;
-      var reader = new FileReader();
-      reader.onload = function(){
-        try{
-          var data = JSON.parse(reader.result);
-          if(!confirm('Bestaande gegevens overschrijven met dit back-upbestand?')) return;
-          store.log = data.log||[]; store.weights = data.weights||[];
-          store.goals = data.goals||DEFAULT_GOALS; store.favorites = data.favorites||[];
-          persist('log'); persist('weights'); persist('goals'); persist('favorites');
-          renderAll(); showToast('Back-up ge\u00efmporteerd');
-        }catch(err){ showToast('Ongeldig bestand'); }
-      };
-      reader.readAsText(file);
-    };
-    document.getElementById('btnWipe').onclick = function(){
-      if(!confirm('Weet je zeker dat je ALLE gegevens wilt wissen? Dit kan niet ongedaan worden gemaakt.')) return;
-      store.log=[]; store.weights=[]; store.favorites=[]; store.goals=DEFAULT_GOALS;
-      persist('log'); persist('weights'); persist('goals'); persist('favorites');
-      renderAll(); showToast('Alles gewist');
-    };
-    document.querySelectorAll('[data-delfav]').forEach(function(b){
-      b.onclick = function(){
-        store.favorites = store.favorites.filter(function(f){ return f.id!==b.dataset.delfav; });
-        persist('favorites'); renderAll();
-      };
-    });
-  }
-}
-
-/* ================= ADD FOOD SHEET ================= */
-var addMode = 'search'; // search | scan | manual
-var draftItem = null; // {name, kcal100, protein100, carbs100, fat100, amount, barcode}
-
-function openAddFoodSheet(){
-  addMode = 'search';
-  draftItem = null;
-  renderSheet(sheetPicker());
-  openSheet();
-}
-
-function openSheet(){ document.getElementById('sheetOverlay').classList.add('open'); }
-function closeSheet(){ document.getElementById('sheetOverlay').classList.remove('open'); }
-
-function renderSheet(html){
-  document.getElementById('sheet').innerHTML = html;
-  var closeBtn = document.getElementById('sheetClose');
-  if(closeBtn) closeBtn.onclick = closeSheet;
-}
-
-document.getElementById('sheetOverlay').addEventListener('click', function(e){
-  if(e.target.id==='sheetOverlay') closeSheet();
-});
-
-function sheetPicker(){
-  var html = '<div class="sheethead"><h3>Voeding toevoegen</h3><button class="close" id="sheetClose">&times;</button></div>';
-  html += '<div class="sheetbody">';
-  html += '<div class="modetabs">'+
-    '<button data-mode="search" class="'+(addMode==='search'?'active':'')+'">'+ICONS.search+' Zoeken</button>'+
-    '<button data-mode="scan" class="'+(addMode==='scan'?'active':'')+'">'+ICONS.camera+' Scannen</button>'+
-    '<button data-mode="manual" class="'+(addMode==='manual'?'active':'')+'">'+ICONS.edit+' Handmatig</button>'+
-  '</div>';
-
-  if(store.favorites.length>0){
-    html += '<div class="favwrap">'+store.favorites.map(function(f){
-      return '<span class="favchip" data-fav="'+f.id+'">'+esc(f.name)+'</span>';
-    }).join('')+'</div>';
-  }
-
-  if(addMode==='search'){
-    html += '<div class="field"><input type="text" id="searchInput" placeholder="Zoek een product, bv. magere kwark"></div>';
-    html += '<div id="searchResults"></div>';
-  } else if(addMode==='scan'){
-    html += '<p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Scan de barcode op de verpakking, dan halen we de voedingswaarden automatisch op.</p>';
-    html += '<button class="primarybtn" id="btnStartScan">'+ICONS.camera+' Camera openen</button>';
-  } else {
-    html += manualFormHtml({});
-  }
-  html += '</div>';
-  return html;
-}
-
-function bindPickerEvents(){
-  document.querySelectorAll('.modetabs [data-mode]').forEach(function(b){
-    b.onclick = function(){ addMode=b.dataset.mode; renderSheet(sheetPicker()); bindPickerEvents(); };
-  });
-  document.querySelectorAll('[data-fav]').forEach(function(b){
-    b.onclick = function(){
-      var fav = store.favorites.find(function(f){return f.id===b.dataset.fav;});
-      if(fav){ draftItem = Object.assign({}, fav, {amount:100}); renderSheet(amountFormHtml()); bindAmountEvents(); }
-    };
-  });
-  var startScanBtn = document.getElementById('btnStartScan');
-  if(startScanBtn) startScanBtn.onclick = startScan;
-  var searchInput = document.getElementById('searchInput');
-  if(searchInput){
-    searchInput.focus();
-    var t;
-    searchInput.addEventListener('input', function(){
-      clearTimeout(t);
-      var q = searchInput.value.trim();
-      if(q.length<2){ document.getElementById('searchResults').innerHTML=''; return; }
-      t = setTimeout(function(){ doSearch(q); }, 450);
-    });
-  }
-}
-// wrap renderSheet to also bind picker events when relevant
-var _renderSheet = renderSheet;
-renderSheet = function(html){ _renderSheet(html); };
-
-function normalizeOffHit(p){
-  var n = p.nutriments||{};
-  var brand = Array.isArray(p.brands) ? p.brands[0] : (p.brands ? String(p.brands).split(',')[0] : '');
-  return {
-    name: p.product_name_nl || p.product_name || '',
-    brand: brand,
-    kcal100: nutKcal(n),
-    protein100: n.proteins_100g||0,
-    carbs100: n.carbohydrates_100g||0,
-    fat100: n.fat_100g||0
-  };
-}
-
-function trySearchNew(q){
-  // search.openfoodfacts.org (search-a-licious) - actuele backend
-  return fetch('https://search.openfoodfacts.org/search?q='+encodeURIComponent(q)+'&page_size=20&langs=nl')
-    .then(function(r){ if(!r.ok) throw new Error('bad status'); return r.json(); })
-    .then(function(data){
-      var hits = (data.hits||[]).filter(function(p){ return p.product_name || p.product_name_nl; }).map(normalizeOffHit);
-      if(hits.length===0) throw new Error('geen resultaten');
-      return hits;
-    });
-}
-function trySearchLegacy(q){
-  // world.openfoodfacts.org/cgi/search.pl - oudere backend, soms tijdelijk uit
-  return fetch('https://world.openfoodfacts.org/cgi/search.pl?search_terms='+encodeURIComponent(q)+'&search_simple=1&action=process&json=1&page_size=20')
-    .then(function(r){ if(!r.ok) throw new Error('bad status'); return r.json(); })
-    .then(function(data){
-      var hits = (data.products||[]).filter(function(p){ return p.product_name; }).map(normalizeOffHit);
-      if(hits.length===0) throw new Error('geen resultaten');
-      return hits;
-    });
-}
-
-function doSearch(q){
-  var box = document.getElementById('searchResults');
-  box.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted);">Zoeken&hellip;</p>';
-  trySearchNew(q).catch(function(){ return trySearchLegacy(q); })
-    .then(function(results){ renderSearchList(results); })
-    .catch(function(){
-      box.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted);">Zoeken lukt nu niet (Open Food Facts tijdelijk niet bereikbaar, of geen verbinding). Gebruik Scannen of vul het handmatig in.</p>';
-    });
-}
-
-function renderSearchList(results){
-  var box = document.getElementById('searchResults');
-  results = results.slice(0,15);
-  box.innerHTML = results.map(function(p, i){
-    return '<div class="searchresult" data-idx="'+i+'"><span class="n">'+esc(p.name)+(p.brand?' <span style="color:var(--text-muted);">&middot; '+esc(p.brand)+'</span>':'')+'</span><span class="k">'+round(p.kcal100)+' kcal/100g</span></div>';
-  }).join('');
-  box.querySelectorAll('.searchresult').forEach(function(el){
-    el.onclick = function(){
-      var p = results[+el.dataset.idx];
-      draftItem = { name: p.name, kcal100: p.kcal100, protein100: p.protein100, carbs100: p.carbs100, fat100: p.fat100, amount: 100 };
-      renderSheet(amountFormHtml()); bindAmountEvents();
-    };
-  });
-}
-
-function nutKcal(n){
-  if(n['energy-kcal_100g']!=null) return n['energy-kcal_100g'];
-  if(n.energy_100g!=null) return n.energy_100g/4.184; // kJ fallback
-  return 0;
-}
-
-/* ---- scanning ---- */
-var scanStream = null;
-function startScan(){
-  if(!('BarcodeDetector' in window)){
-    showToast('Scannen wordt niet ondersteund op dit toestel');
-    return;
-  }
-  var root = document.getElementById('scanRoot');
-  root.innerHTML =
-    '<div class="scanview" id="scanview">'+
-      '<video id="scanVideo" autoplay playsinline muted></video>'+
-      '<div class="scanoverlay"><div class="scanbox"></div></div>'+
-      '<div class="scanbar"><button id="scanClose">&times;</button><span></span></div>'+
-      '<div class="scanmsg">Richt de camera op de barcode</div>'+
-    '</div>';
-  document.getElementById('scanClose').onclick = stopScan;
-
-  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(stream){
-    scanStream = stream;
-    var video = document.getElementById('scanVideo');
-    video.srcObject = stream;
-    var detector = new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128']});
-    var stopped = false;
-    function tick(){
-      if(stopped) return;
-      detector.detect(video).then(function(codes){
-        if(codes.length>0 && !stopped){
-          stopped = true;
-          var code = codes[0].rawValue;
-          stopScan();
-          lookupBarcode(code);
-        } else if(!stopped){
-          requestAnimationFrame(tick);
-        }
-      }).catch(function(){ if(!stopped) requestAnimationFrame(tick); });
-    }
-    requestAnimationFrame(tick);
-  }).catch(function(){
-    showToast('Kon camera niet openen');
-    stopScan();
-  });
-}
-function stopScan(){
-  if(scanStream){ scanStream.getTracks().forEach(function(t){t.stop();}); scanStream=null; }
-  document.getElementById('scanRoot').innerHTML = '';
-}
-function lookupBarcode(code){
-  showToast('Product opzoeken\u2026');
-  fetch('https://world.openfoodfacts.org/api/v2/product/'+encodeURIComponent(code)+'.json')
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      if(data.status!==1 || !data.product){
-        showToast('Product niet gevonden');
-        addMode='manual'; draftItem=null; renderSheet(sheetPicker()); bindPickerEvents(); openSheet();
-        return;
-      }
-      var p = data.product, n = p.nutriments||{};
-      draftItem = {
-        name: p.product_name || 'Onbekend product',
-        kcal100: nutKcal(n),
-        protein100: n.proteins_100g||0,
-        carbs100: n.carbohydrates_100g||0,
-        fat100: n.fat_100g||0,
-        amount: 100,
-        barcode: code
-      };
-      renderSheet(amountFormHtml()); bindAmountEvents(); openSheet();
-    })
-    .catch(function(){ showToast('Opzoeken mislukt'); });
-}
-
-/* ---- manual form ---- */
-function manualFormHtml(prefill){
-  return '<div class="field"><label>Naam</label><input type="text" id="mName" value="'+esc(prefill.name||'')+'" placeholder="bv. Kipfilet"></div>'+
-    '<p style="font-size:11.5px;color:var(--text-muted);margin:-6px 0 12px;">Waarden per 100g, zoals op de verpakking</p>'+
-    '<div class="fieldrow">'+
-      '<div class="field"><label>Kcal /100g</label><input type="number" id="mKcal" value="'+(prefill.kcal100||'')+'"></div>'+
-      '<div class="field"><label>Eiwit /100g</label><input type="number" id="mProtein" value="'+(prefill.protein100||'')+'"></div>'+
-    '</div>'+
-    '<div class="fieldrow">'+
-      '<div class="field"><label>Koolh. /100g</label><input type="number" id="mCarbs" value="'+(prefill.carbs100||'')+'"></div>'+
-      '<div class="field"><label>Vet /100g</label><input type="number" id="mFat" value="'+(prefill.fat100||'')+'"></div>'+
-    '</div>'+
-    '<button class="primarybtn" id="btnManualNext">Verder</button>';
-}
-function bindManualEvents(){
-  document.getElementById('btnManualNext').onclick = function(){
-    var name = document.getElementById('mName').value.trim();
-    if(!name){ showToast('Vul een naam in'); return; }
-    draftItem = {
-      name: name,
-      kcal100: parseFloat(document.getElementById('mKcal').value)||0,
-      protein100: parseFloat(document.getElementById('mProtein').value)||0,
-      carbs100: parseFloat(document.getElementById('mCarbs').value)||0,
-      fat100: parseFloat(document.getElementById('mFat').value)||0,
-      amount: 100
-    };
-    renderSheet(amountFormHtml()); bindAmountEvents();
-  };
-}
-
-/* ---- amount / confirm form ---- */
-function amountFormHtml(){
-  var it = draftItem;
-  return '<div class="sheethead" style="padding:0 0 8px;"><h3>'+esc(it.name)+'</h3></div>'+
-    '<div class="field"><label>Hoeveelheid (gram)</label><input type="number" id="aAmount" value="'+it.amount+'" inputmode="decimal"></div>'+
-    '<div class="totalspreview" id="totalsPreview"></div>'+
-    '<div class="ghostrow"><input type="checkbox" id="aFav"><label for="aFav">Bewaar als favoriet voor later</label></div>'+
-    '<button class="primarybtn" id="btnSaveEntry">Toevoegen aan '+fmtDateLabel(state.viewDate).toLowerCase()+'</button>'+
-    '<button class="secondarybtn" id="btnBackToForm">Terug</button>';
-}
-function updateTotalsPreview(){
-  var amt = parseFloat(document.getElementById('aAmount').value)||0;
-  var f = amt/100;
-  var it = draftItem;
-  document.getElementById('totalsPreview').innerHTML =
-    '<div><b>'+round(it.kcal100*f)+'</b>kcal</div>'+
-    '<div><b>'+round(it.protein100*f,1)+'</b>eiwit</div>'+
-    '<div><b>'+round(it.carbs100*f,1)+'</b>koolh.</div>'+
-    '<div><b>'+round(it.fat100*f,1)+'</b>vet</div>';
-}
-function bindAmountEvents(){
-  updateTotalsPreview();
-  document.getElementById('aAmount').addEventListener('input', updateTotalsPreview);
-  document.getElementById('btnBackToForm').onclick = function(){
-    if(addMode==='manual'){ renderSheet(manualFormHtml(draftItem)); bindManualEvents(); }
-    else { renderSheet(sheetPicker()); bindPickerEvents(); }
-  };
-  document.getElementById('btnSaveEntry').onclick = function(){
-    var amt = parseFloat(document.getElementById('aAmount').value)||0;
-    if(amt<=0){ showToast('Vul een geldige hoeveelheid in'); return; }
-    var f = amt/100;
-    var it = draftItem;
-    store.log.push({
-      id: uid(), date: state.viewDate,
-      name: it.name, amount: amt,
-      kcal: round(it.kcal100*f), protein: round(it.protein100*f,1),
-      carbs: round(it.carbs100*f,1), fat: round(it.fat100*f,1)
-    });
-    persist('log');
-    if(document.getElementById('aFav').checked){
-      var exists = store.favorites.some(function(fv){ return fv.name.toLowerCase()===it.name.toLowerCase(); });
-      if(!exists){
-        store.favorites.push({id:uid(), name:it.name, kcal100:it.kcal100, protein100:it.protein100, carbs100:it.carbs100, fat100:it.fat100});
-        persist('favorites');
-      }
-    }
-    closeSheet(); renderAll(); showToast('Toegevoegd');
-  };
-}
-
-/* patch: manual mode needs bindManualEvents right after rendering picker */
-var _openAddFoodSheet = openAddFoodSheet;
-openAddFoodSheet = function(){
-  addMode = 'search'; draftItem = null;
-  renderSheet(sheetPicker());
-  bindPickerEvents();
-  if(addMode==='manual') bindManualEvents();
-  openSheet();
-};
-// ensure switching to manual mode binds its events too
-var _origBindPicker = bindPickerEvents;
-bindPickerEvents = function(){
-  _origBindPicker();
-  if(addMode==='manual') bindManualEvents();
-};
-
-/* ================= INIT ================= */
-renderAll();
-
-if('serviceWorker' in navigator){
-  window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js').catch(function(){});
-  });
-}
-
-})();
-</script>
+<script src="fodmap.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

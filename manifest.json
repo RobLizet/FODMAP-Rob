@@ -1,17 +1,18 @@
 {
-  "name": "Voedingstracker",
-  "short_name": "Voeding",
-  "description": "Houd calorieën, eiwitten, koolhydraten, vet en je gewicht bij.",
-  "start_url": "./index.html",
+  "name": "FODMAP Scanner",
+  "short_name": "FODMAP",
+  "description": "Scan een barcode of plak een ingrediëntenlijst en zie direct welke FODMAPs erin zitten.",
+  "lang": "nl",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#F7F5EF",
-  "theme_color": "#3D5C3E",
   "orientation": "portrait",
+  "background_color": "#f5f7f4",
+  "theme_color": "#1f8a4c",
+  "categories": ["health", "food"],
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
