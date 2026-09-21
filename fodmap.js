@@ -30,42 +30,47 @@
   const DB = [
     // ---------- Fructanen ----------
     E('ui', 'Ui', 'high', ['fructanen'], {
-      exact: ['ui', 'uien', 'uitje', 'uitjes'],
-      keys: ['uienpoeder', 'uipoeder', 'uiengranulaat', 'uivlokken', 'uiensap', 'onion', 'sjalot', 'shallot'],
-      note: 'Zit in veel sauzen, bouillon en kant-en-klaarmaaltijden.'
+      exact: ['ui', 'uien', 'uitje', 'uitjes', 'ail'],
+      keys: ['uienpoeder', 'uipoeder', 'uiengranulaat', 'uivlokken', 'uiensap', 'onion', 'sjalot', 'shallot',
+        'oignon', 'zwiebel', 'echalote'],
+      note: 'Zit in veel sauzen, bouillon en kant-en-klaarmaaltijden. Ook als Franse "oignon"/"ail" of Duitse "Zwiebel"/"Knoblauch" op geïmporteerde etiketten.'
     }),
     E('lenteui', 'Lente-ui / bosui', 'moderate', ['fructanen'], {
       keys: ['lenteui', 'bosui', 'spring onion', 'scallion'],
       note: 'Het witte deel is hoog, het groene deel is laag.'
     }),
     E('knoflook', 'Knoflook', 'high', ['fructanen'], {
-      keys: ['knoflook', 'garlic'],
+      keys: ['knoflook', 'garlic', 'knoblauch'],
       note: 'Knoflookolie zonder stukjes is meestal wel te doen.'
     }),
     E('prei', 'Prei', 'moderate', ['fructanen'], {
       exact: ['prei', 'leek', 'leeks'],
+      keys: ['poireau', 'porree'],
       note: 'Het witte deel is hoog, het groene deel is laag.'
     }),
     E('tarwe', 'Tarwe', 'high', ['fructanen'], {
-      keys: ['tarwe', 'wheat', 'durum'],
-      note: 'In kleine hoeveelheden (bijv. één boterham) vaak wel te doen.'
+      keys: ['tarwe', 'wheat', 'durum', 'froment', 'weizen'],
+      exact: ['ble', 'bles'],
+      note: 'In kleine hoeveelheden (bijv. één boterham) vaak wel te doen. Ook als Franse "blé" of Duitse "Weizen".'
     }),
     E('spelt', 'Spelt', 'moderate', ['fructanen'], {
       keys: ['spelt'],
       note: 'Zuurdesem-spelt is vaak laag.'
     }),
     E('rogge', 'Rogge', 'high', ['fructanen'], {
-      keys: ['rogge', 'rye'],
+      keys: ['rogge', 'rye', 'seigle', 'roggen'],
       note: 'Zuurdesem-roggebrood in kleine portie kan soms wel.'
     }),
     E('gerst', 'Gerst', 'high', ['fructanen'], {
-      keys: ['gerst', 'barley']
+      keys: ['gerst', 'barley', 'gerste'],
+      exact: ['orge', 'orges']
     }),
     E('granen', 'Couscous, bulgur, griesmeel', 'high', ['fructanen'], {
       keys: ['couscous', 'bulgur', 'griesmeel', 'semolina', 'kamut', 'farro']
     }),
     E('inuline', 'Inuline / cichorei / oligofructose', 'high', ['fructanen'], {
-      keys: ['inuline', 'inulin', 'cichorei', 'chicory', 'oligofructose', 'fructo-oligo', 'fructooligo', 'fructaan', 'fructan'],
+      keys: ['inuline', 'inulin', 'cichorei', 'chicory', 'oligofructose', 'fructo-oligo', 'fructooligo', 'fructaan', 'fructan',
+        'chicoree', 'zichorie'],
       exact: ['fos'],
       note: 'Wordt vaak als vezel toegevoegd (o.a. in "vezelrijke" producten).'
     }),
@@ -84,12 +89,12 @@
       keys: ['kikkererwt', 'chickpea', 'linz', 'lentil', 'kidneyboon', 'kidneybon', 'kidney bean', 'witte boon', 'witte bon',
         'bruine boon', 'bruine bon', 'zwarte boon', 'zwarte bon', 'black bean', 'sojaboon', 'sojabon', 'soybean',
         'sojameel', 'sojabloem', 'tuinboon', 'tuinbon', 'kapucijner', 'borlotti', 'adzuki', 'hummus', 'humus',
-        'falafel', 'peulvrucht', 'lupine'],
+        'falafel', 'peulvrucht', 'lupine', 'haricot', 'lentille', 'pois chiche', 'kichererbse', 'linse', 'bohne'],
       exact: ['bonen', 'boon', 'beans', 'bean'],
-      note: 'Uit blik en goed afgespoeld is een kleine portie soms wel te doen.'
+      note: 'Uit blik en goed afgespoeld is een kleine portie soms wel te doen. Ook als Franse "haricot"/"lentille" of Duitse "Bohne"/"Linse" op geïmporteerde etiketten.'
     }),
     E('erwten', 'Erwten', 'moderate', ['gos'], {
-      exact: ['erwten', 'erwt', 'peas'],
+      exact: ['erwten', 'erwt', 'peas', 'pois', 'erbse', 'erbsen'],
       note: 'Erwteneiwit-isolaat wordt vaak beter verdragen.'
     }),
     E('noten', 'Cashew / pistache', 'high', ['gos', 'fructanen'], {
@@ -98,18 +103,21 @@
 
     // ---------- Lactose ----------
     E('lactose', 'Melk / room / yoghurt / verse kaas', 'high', ['lactose'], {
-      exact: ['melk', 'milk', 'room', 'cream', 'wei', 'whey'],
+      exact: ['melk', 'milk', 'room', 'cream', 'wei', 'whey', 'lait', 'laits', 'milch'],
       keys: ['lactose', 'melkpoeder', 'melksuiker', 'weipoeder', 'weiproduct', 'weiproteine', 'wei-eiwit', 'weieiwit',
         'whey protein', 'slagroom', 'kookroom', 'creme fraiche', 'roomkaas', 'ricotta', 'mascarpone', 'cottage',
-        'huttenkase', 'milk powder', 'cream cheese', 'karnemelk', 'yoghurt', 'yogurt', 'kwark', 'kefir'],
-      note: 'Harde kaas en boter bevatten nauwelijks lactose; lactosevrije melk is prima.'
+        'huttenkase', 'milk powder', 'cream cheese', 'karnemelk', 'yoghurt', 'yogurt', 'kwark', 'kefir',
+        'creme', 'sahne', 'rahm', 'quark', 'joghurt',
+        'vollmilch', 'magermilch', 'buttermilch', 'frischmilch', 'kondensmilch', 'trockenmilch', 'milchpulver',
+        'schlagsahne', 'sauerrahm', 'frischkase'],
+      note: 'Harde kaas en boter bevatten nauwelijks lactose; lactosevrije melk is prima. Ook als Franse "lait"/"crème" of Duitse "Milch"/"Sahne" op geïmporteerde etiketten.'
     }),
     E('melkchocolade', 'Melkchocolade', 'moderate', ['lactose'], {
       keys: ['melkchocolade', 'milk chocolate']
     }),
 
     // ---------- Fructose ----------
-    E('honing', 'Honing', 'high', ['fructose'], { keys: ['honing', 'honey'] }),
+    E('honing', 'Honing', 'high', ['fructose'], { keys: ['honing', 'honey', 'miel', 'honig'] }),
     E('agave', 'Agave', 'high', ['fructose'], { keys: ['agave'] }),
     E('fructosestroop', 'Fructose(-glucose)stroop', 'high', ['fructose'], {
       keys: ['fructose', 'glucose-fructose', 'glucose fructose', 'hfcs', 'high fructose', 'high-fructose',
@@ -121,18 +129,21 @@
     }),
 
     // ---------- Fruit ----------
-    E('appel', 'Appel', 'high', ['fructose', 'polyolen'], { keys: ['appel', 'apple'], note: 'Ook als appelsap(concentraat) of appelmoes.' }),
-    E('peer', 'Peer', 'high', ['fructose', 'polyolen'], { keys: ['peer', 'peren'], exact: ['pear', 'pears'] }),
-    E('mango', 'Mango', 'high', ['fructose'], { keys: ['mango'] }),
-    E('watermeloen', 'Watermeloen', 'high', ['fructose', 'polyolen'], { keys: ['watermeloen', 'watermelon'] }),
-    E('perzik', 'Perzik / nectarine', 'high', ['fructose', 'polyolen'], { keys: ['perzik', 'peach', 'nectarine'] }),
-    E('abrikoos', 'Abrikoos', 'high', ['fructose', 'polyolen'], { keys: ['abrikoos', 'abrikozen', 'apricot'] }),
-    E('pruim', 'Pruim / gedroogde pruim', 'high', ['polyolen', 'fructose'], { keys: ['pruim', 'prune', 'plum'] }),
-    E('kers', 'Kers', 'high', ['fructose', 'polyolen'], { exact: ['kers', 'kersen', 'cherry', 'cherries'] }),
+    E('appel', 'Appel', 'high', ['fructose', 'polyolen'], {
+      keys: ['appel', 'apple', 'pomme', 'apfel'],
+      note: 'Ook als appelsap(concentraat) of appelmoes, of Franse "pomme"/Duitse "Apfel" op geïmporteerde etiketten.'
+    }),
+    E('peer', 'Peer', 'high', ['fructose', 'polyolen'], { keys: ['peer', 'peren', 'birne'], exact: ['pear', 'pears', 'poire', 'poires'] }),
+    E('mango', 'Mango', 'high', ['fructose'], { keys: ['mango', 'mangue'] }),
+    E('watermeloen', 'Watermeloen', 'high', ['fructose', 'polyolen'], { keys: ['watermeloen', 'watermelon', 'pasteque', 'wassermelone'] }),
+    E('perzik', 'Perzik / nectarine', 'high', ['fructose', 'polyolen'], { keys: ['perzik', 'peach', 'nectarine', 'pfirsich'], exact: ['peche', 'peches'] }),
+    E('abrikoos', 'Abrikoos', 'high', ['fructose', 'polyolen'], { keys: ['abrikoos', 'abrikozen', 'apricot', 'abricot', 'aprikose'] }),
+    E('pruim', 'Pruim / gedroogde pruim', 'high', ['polyolen', 'fructose'], { keys: ['pruim', 'prune', 'plum', 'pflaume'] }),
+    E('kers', 'Kers', 'high', ['fructose', 'polyolen'], { exact: ['kers', 'kersen', 'cherry', 'cherries', 'cerise', 'cerises', 'kirsche'] }),
     E('braam', 'Braam', 'high', ['polyolen'], { keys: ['braam', 'bramen', 'blackberr'] }),
     E('lychee', 'Lychee', 'high', ['fructose', 'polyolen'], { keys: ['lychee', 'lichi', 'litchi'] }),
-    E('vijg', 'Vijg', 'high', ['fructose'], { exact: ['vijg', 'vijgen', 'fig', 'figs'] }),
-    E('dadel', 'Dadel', 'moderate', ['fructose', 'fructanen'], { keys: ['dadel'], exact: ['dates', 'date'] }),
+    E('vijg', 'Vijg', 'high', ['fructose'], { exact: ['vijg', 'vijgen', 'fig', 'figs', 'figue', 'figues', 'feige'] }),
+    E('dadel', 'Dadel', 'moderate', ['fructose', 'fructanen'], { keys: ['dadel', 'dattel'], exact: ['dates', 'date', 'datte', 'dattes'] }),
     E('rozijn', 'Rozijn / sultana', 'moderate', ['fructose'], {
       keys: ['rozijn', 'raisin', 'sultana'],
       note: 'Een kleine portie (1 eetlepel) is meestal laag.'
@@ -157,13 +168,13 @@
 
     // ---------- Groenten ----------
     E('champignon', 'Champignons / paddenstoelen', 'high', ['polyolen'], {
-      keys: ['champignon', 'mushroom', 'paddenstoel', 'portobello', 'shiitake', 'oesterzwam', 'cantharel', 'eekhoorntjesbrood']
+      keys: ['champignon', 'mushroom', 'paddenstoel', 'portobello', 'shiitake', 'oesterzwam', 'cantharel', 'eekhoorntjesbrood', 'pilz']
     }),
-    E('bloemkool', 'Bloemkool', 'high', ['polyolen'], { keys: ['bloemkool', 'cauliflower'] }),
-    E('zoetepatat', 'Zoete aardappel', 'moderate', ['polyolen'], { keys: ['zoete aardappel', 'bataat', 'sweet potato'] }),
+    E('bloemkool', 'Bloemkool', 'high', ['polyolen'], { keys: ['bloemkool', 'cauliflower', 'blumenkohl', 'choufleur'], exact: ['chou-fleur'] }),
+    E('zoetepatat', 'Zoete aardappel', 'moderate', ['polyolen'], { keys: ['zoete aardappel', 'bataat', 'sweet potato', 'patate douce'] }),
     E('selderij', 'Bleekselderij', 'moderate', ['polyolen'], {
-      keys: ['bleekselderij', 'selderij', 'celery'],
-      note: 'Knolselderij is wel laag.'
+      keys: ['bleekselderij', 'selderij', 'celery', 'celeri', 'sellerie'],
+      note: 'Knolselderij (ook Franse "céleri-rave") is wel laag.'
     }),
 
     // ---------- Onzeker ----------
@@ -232,7 +243,11 @@
     'green beans?', 'string beans?', 'french beans?', 'haricots? verts?',
     'cocoa beans?', 'cacao beans?', 'coffee beans?', 'vanilla beans?',
     'sperzie[\\s-]?bon\\w*', 'snij[\\s-]?bon\\w*', 'sla[\\s-]?bon\\w*', 'prinsess\\w*[\\s-]?bon\\w*',
-    'pronk[\\s-]?bon\\w*', 'groene[\\s-]?bon\\w*', 'sojaboon[\\s-]?scheut\\w*', 'taugé', 'tauge'
+    'pronk[\\s-]?bon\\w*', 'groene[\\s-]?bon\\w*', 'sojaboon[\\s-]?scheut\\w*', 'taugé', 'tauge',
+    'grune[\\s-]?bohn\\w*',
+    'pommes?[\\s-]?de[\\s-]?terre\\w*', 'apfelsinen?',
+    'lait[\\s-]?(de|d.)?[\\s-]?(coco|amande|avoine|soja|riz|noisette)\\w*',
+    'celeri[\\s-]?rave\\w*', 'knolselderij'
   ];
 
   // ---------- helpers ----------
