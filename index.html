@@ -5,20 +5,20 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>FODMAP Scanner</title>
 <meta name="description" content="Scan een barcode of plak een ingrediëntenlijst en zie direct welke FODMAPs erin zitten.">
-<meta name="theme-color" content="#1f8a4c">
+<meta name="theme-color" content="#c99a5b">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{
-  --bg:#f5f7f4;--card:#fff;--fg:#1c2620;--muted:#66736b;--line:#dfe6e0;--accent:#1f8a4c;
-  --high:#d64545;--mod:#c98410;--low:#2e9e5b;--unk:#7d8882;
-  --high-bg:#fbe9e9;--mod-bg:#fdf1dc;--low-bg:#e5f5ec;--unk-bg:#eceeed;
+  --bg:#f7f0e2;--card:#fffcf5;--fg:#3d3223;--muted:#8a7a5f;--line:#e6d8ba;--accent:#c99a5b;
+  --high:#c15f4e;--mod:#b8863c;--low:#7a9165;--unk:#8a7f6e;
+  --high-bg:#f8e6e0;--mod-bg:#f6ecd6;--low-bg:#e9efe2;--unk-bg:#efe8d9;
 }
 @media (prefers-color-scheme:dark){
-  :root{--bg:#121714;--card:#1b231e;--fg:#e8eee9;--muted:#95a39a;--line:#2b362f;--accent:#3fbf76;
-    --high:#f06a6a;--mod:#f0b04a;--low:#4cc985;
-    --high-bg:#3a1e1e;--mod-bg:#3a2f18;--low-bg:#183426;--unk-bg:#262c28;}
+  :root{--bg:#221c14;--card:#2d2519;--fg:#f2e9d8;--muted:#c2b295;--line:#463a28;--accent:#dcb178;
+    --high:#e28575;--mod:#e0b463;--low:#a0bd8a;
+    --high-bg:#3f2820;--mod-bg:#3a3020;--low-bg:#28321f;--unk-bg:#33291d;}
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -66,8 +66,8 @@ label.lbl{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
 .verdict strong{font-size:19px}
 .verdict span{font-size:14px;opacity:.95}
 .verdict.high{background:var(--high)}
-.verdict.mod{background:#e39a1f;color:#2a1c00}
-.verdict.low{background:#2e9e5b}
+.verdict.mod{background:var(--mod);color:#2a1c00}
+.verdict.low{background:var(--low)}
 .verdict.unk{background:var(--unk)}
 .result h3{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 6px}
 .hits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}

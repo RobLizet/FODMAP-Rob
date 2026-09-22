@@ -6,7 +6,8 @@
   //  1.1.0 - Foto-herkenning (OCR) van etiketten toegevoegd
   //  1.2.0 - Franse/Duitse ingrediëntnamen herkend (fix appelsap-bug)
   //  1.3.0 - Dagboek-tabblad (gegeten items + notitie per dag)
-  const APP_VERSION = '1.3.0';
+  //  1.4.0 - Crème/karamel kleurthema
+  const APP_VERSION = '1.4.0';
 
   const F = window.FODMAP;
   const $ = (s, el = document) => el.querySelector(s);
