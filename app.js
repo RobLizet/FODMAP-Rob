@@ -8,7 +8,8 @@
   //  1.3.0 - Dagboek-tabblad (gegeten items + notitie per dag)
   //  1.4.0 - Crème/karamel kleurthema
   //  1.5.0 - Snelkoppelingen "Barcode scannen"/"Foto van etiket" in het Dagboek
-  const APP_VERSION = '1.5.0';
+  //  1.5.1 - Fix: melk met lactase-enzym (lactosevrij) werd onterecht als hoog-FODMAP gezien
+  const APP_VERSION = '1.5.1';
 
   const F = window.FODMAP;
   const $ = (s, el = document) => el.querySelector(s);

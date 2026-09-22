@@ -296,11 +296,16 @@
 
   const RANK = { high: 3, moderate: 2, unsure: 1 };
 
+  const LACTASE_RE = new RegExp(B + 'lactase' + A, 'u');
+
   function analyze(text, enabled) {
     const cleaned = cleanText(text);
     if (!cleaned) return { verdict: 'unknown', total: 0, hits: [], items: [] };
     const tokens = splitIngredients(cleaned);
     const en = enabled || null; // Set met groepsnamen, of null = alles
+    // Melk/room met toegevoegd lactase-enzym is enzymatisch lactosevrij gemaakt,
+    // ook als het ingrediëntenlijstje het woord "lactosevrij" zelf niet gebruikt.
+    const hasLactase = LACTASE_RE.test(norm(cleaned));
 
     const items = tokens.map((t, i) => {
       const tn = norm(t).replace(EXC_RE, ' ');
@@ -309,7 +314,8 @@
         if (!e._re) continue;
         const m = tn.match(e._re);
         if (!m) continue;
-        const active = e.level === 'unsure' || !en || e.groups.some(g => en.has(g));
+        let active = e.level === 'unsure' || !en || e.groups.some(g => en.has(g));
+        if (e.id === 'lactose' && hasLactase) active = false;
         hits.push({ id: e.id, name: e.name, level: e.level, groups: e.groups, term: m[0].trim(), note: e.note || '', active });
       }
       let level = 'none';
