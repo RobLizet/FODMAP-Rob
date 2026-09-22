@@ -110,6 +110,21 @@ dialog{border:0;border-radius:18px;padding:18px;max-width:440px;width:calc(100% 
 dialog::backdrop{background:rgba(0,0,0,.5)}
 .grp{display:flex;gap:10px;align-items:flex-start;padding:8px 0}
 .grp input{width:22px;height:22px;margin-top:2px;accent-color:var(--accent)}
+
+/* AI-chat */
+#aiChatDialog{display:flex;flex-direction:column;max-height:85dvh;height:min(640px,85dvh);padding:14px}
+.ai-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex:none}
+.ai-head h2{font-size:17px}
+.ai-head button{background:none;border:0;color:var(--muted);font-size:24px;line-height:1;padding:0 4px;cursor:pointer}
+.ai-msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;-webkit-overflow-scrolling:touch}
+.ai-msg{max-width:88%;padding:9px 12px;border-radius:14px;font-size:14.5px;line-height:1.45;white-space:pre-wrap}
+.ai-msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.ai-msg.assistant{align-self:flex-start;background:var(--unk-bg);color:var(--fg);border-bottom-left-radius:4px}
+.ai-msg.err{align-self:center;background:var(--high-bg);color:var(--high);font-size:13px}
+.ai-typing{align-self:flex-start;color:var(--muted);font-size:13px;padding:2px 6px}
+.ai-inputrow{display:flex;gap:8px;margin-top:10px;flex:none}
+.ai-inputrow textarea{flex:1;min-height:42px;max-height:110px;resize:none;padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:var(--bg)}
+.ai-inputrow button{flex:none;border-radius:14px;padding:0 18px}
 </style>
 </head>
 <body>
@@ -118,6 +133,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
   <h1>FODMAP Scanner</h1>
   <div class="btns">
     <button id="installBtn" hidden>Installeer</button>
+    <button id="aiChatBtn" aria-label="Open AI-assistent">AI</button>
     <button id="settingsBtn" aria-label="Instellingen">Instellingen</button>
   </div>
 </header>
@@ -227,6 +243,19 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     <p class="muted small" id="appVersion" style="margin-top:8px"></p>
     <div class="actions"><button class="btn">Sluiten</button></div>
   </form>
+</dialog>
+
+<dialog id="aiChatDialog">
+  <div class="ai-head">
+    <h2>FODMAP AI-assistent</h2>
+    <button id="aiChatClose" type="button" aria-label="Sluiten">×</button>
+  </div>
+  <div id="aiMessages" class="ai-msgs"></div>
+  <form id="aiForm" class="ai-inputrow">
+    <textarea id="aiInput" placeholder="Stel een vraag, bijv. 'mag ik pindakaas?'" rows="1"></textarea>
+    <button id="aiSend" class="btn" type="submit">Stuur</button>
+  </form>
+  <p class="disc">AI-antwoorden zijn indicatief, geen medisch advies.</p>
 </dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>

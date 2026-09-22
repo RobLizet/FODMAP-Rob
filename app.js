@@ -9,7 +9,21 @@
   //  1.4.0 - Crème/karamel kleurthema
   //  1.5.0 - Snelkoppelingen "Barcode scannen"/"Foto van etiket" in het Dagboek
   //  1.5.1 - Fix: melk met lactase-enzym (lactosevrij) werd onterecht als hoog-FODMAP gezien
-  const APP_VERSION = '1.5.1';
+  //  1.6.0 - AI-assistent (chat + uitleg bij resultaat) via bestaande toto-proxy Worker
+  const APP_VERSION = '1.6.0';
+
+  // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
+  // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
+  const AI_ENDPOINT = 'https://toto-proxy.zweetzakken.workers.dev/anthropic';
+  const AI_MODEL = 'claude-sonnet-4-6';
+  const AI_SYSTEM_PROMPT = [
+    'Je bent een vriendelijke, beknopte FODMAP- en voedingsassistent in een Nederlandse app.',
+    'De gebruiker (Rob) volgt een laag-FODMAP eliminatiedieet.',
+    'Antwoord altijd in het Nederlands, kort en praktisch (meestal 2-6 zinnen, gebruik een lijst alleen als dat echt duidelijker is).',
+    'Baseer je op de Monash-FODMAP-aanpak: fructanen, GOS, lactose, fructose(-overmaat) en polyolen.',
+    'Als je het niet zeker weet, zeg dat eerlijk en adviseer het etiket te scannen in de app of het te bespreken met een diëtist.',
+    'Je geeft geen medische diagnoses en herinnert er bij gevoelige vragen kort aan dat dit geen medisch advies is.'
+  ].join(' ');
 
   const F = window.FODMAP;
   const $ = (s, el = document) => el.querySelector(s);
@@ -41,6 +55,7 @@
   let settings = Object.assign({ groups: Object.keys(F.GROUPS) }, store.get('settings', {}));
   let history = store.get('history', []);
   let diary = store.get('diary', {}); // { 'YYYY-MM-DD': { items: [{text, verdict, source, t}], note: '' } }
+  let aiHistory = store.get('aiHistory', []); // [{role:'user'|'assistant', content}]
   const shown = {};           // container-id -> {data, actions}
   let pendingBarcode = '';
 
@@ -109,6 +124,16 @@
         }
       }, 'Voeg toe aan dagboek');
       acts.push(diaryBtn);
+
+      const askBtn = h('button', {
+        class: 'btn ghost', type: 'button', onclick: () => {
+          const hitNames = res.hits.map(hh => hh.name).join(', ') || 'geen specifieke FODMAP-treffers';
+          const prefill = 'Ik heb "' + (data.title || 'dit product') + '" gescand. Uitslag: ' + VERDICT[res.verdict].title +
+            '. Gevonden: ' + hitNames + '. Ingrediënten: ' + data.text + '. Kun je uitleggen waarom, en of ik het in een kleine portie zou kunnen proberen?';
+          openAiChat(prefill);
+        }
+      }, 'Vraag het de AI');
+      acts.push(askBtn);
     }
     if (acts && acts.length) card.append(h('div', { class: 'actions' }, acts));
     card.append(h('p', { class: 'disc', text: 'Indicatief en zonder portiegroottes. Geen medisch advies.' }));
@@ -506,6 +531,106 @@
     showView('text');
     ocrInput.click();
   });
+
+  // ---------- AI-assistent ----------
+  const aiDialog = $('#aiChatDialog');
+  const aiMessagesEl = $('#aiMessages');
+  const aiInput = $('#aiInput');
+  const aiSendBtn = $('#aiSend');
+  let aiBusy = false;
+
+  function diarySummaryText() {
+    const key = todayKey();
+    const day = diary[key];
+    if (!day || (!day.items.length && !(day.note || '').trim())) return '';
+    const items = day.items.map(it => it.text + (it.verdict ? ' (' + (VERDICT[it.verdict] ? VERDICT[it.verdict].title : it.verdict) + ')' : '')).join(', ');
+    let s = 'Context uit het dagboek van vandaag';
+    if (items) s += ' — gegeten: ' + items + '.';
+    if ((day.note || '').trim()) s += ' Notitie van de gebruiker: ' + day.note.trim() + '.';
+    return s;
+  }
+
+  function renderAiMessages() {
+    aiMessagesEl.replaceChildren(...aiHistory.map(m => h('div', { class: 'ai-msg ' + (m.role === 'user' ? 'user' : 'assistant'), text: m.content })));
+    aiMessagesEl.scrollTop = aiMessagesEl.scrollHeight;
+  }
+
+  function openAiChat(prefill) {
+    if (!aiHistory.length) {
+      aiHistory.push({ role: 'assistant', content: 'Hoi! Ik ben je FODMAP-assistent. Vraag me bijvoorbeeld of iets mag, waarom een ingrediënt hoog-FODMAP is, of om een idee voor een maaltijd. Ik ben geen dokter of diëtist, dus bij twijfel altijd even overleggen.' });
+      store.set('aiHistory', aiHistory);
+    }
+    renderAiMessages();
+    aiDialog.showModal();
+    if (prefill) { aiInput.value = prefill; autoGrow(); }
+    setTimeout(() => aiInput.focus(), 50);
+  }
+
+  function autoGrow() {
+    aiInput.style.height = 'auto';
+    aiInput.style.height = Math.min(110, aiInput.scrollHeight) + 'px';
+  }
+  aiInput.addEventListener('input', autoGrow);
+  aiInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#aiForm').requestSubmit(); }
+  });
+
+  async function sendAiMessage() {
+    const text = aiInput.value.trim();
+    if (!text || aiBusy) return;
+    aiHistory.push({ role: 'user', content: text });
+    aiHistory = aiHistory.slice(-40); // beperk lokale geschiedenis
+    store.set('aiHistory', aiHistory);
+    aiInput.value = '';
+    autoGrow();
+    renderAiMessages();
+
+    aiBusy = true;
+    aiSendBtn.disabled = true;
+    const typing = h('div', { class: 'ai-typing', text: 'Bezig met antwoorden…' });
+    aiMessagesEl.append(typing);
+    aiMessagesEl.scrollTop = aiMessagesEl.scrollHeight;
+
+    try {
+      const context = diarySummaryText();
+      const apiMessages = aiHistory.slice(-20).map(m => ({ role: m.role, content: m.content }));
+      const res = await fetch(AI_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: AI_MODEL,
+          max_tokens: 700,
+          system: AI_SYSTEM_PROMPT + (context ? ('\n\n' + context) : ''),
+          messages: apiMessages
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      typing.remove();
+
+      if (res.status === 429) {
+        aiMessagesEl.append(h('div', { class: 'ai-msg err', text: data.error || 'Daglimiet bereikt — probeer het morgen weer.' }));
+      } else if (!res.ok) {
+        aiMessagesEl.append(h('div', { class: 'ai-msg err', text: 'Er ging iets mis: ' + (data.error || data.message || ('status ' + res.status)) }));
+      } else {
+        const reply = (data.content || []).map(b => b.text || '').join('').trim() || '(geen antwoord ontvangen)';
+        aiHistory.push({ role: 'assistant', content: reply });
+        aiHistory = aiHistory.slice(-40);
+        store.set('aiHistory', aiHistory);
+        renderAiMessages();
+      }
+    } catch (e) {
+      typing.remove();
+      aiMessagesEl.append(h('div', { class: 'ai-msg err', text: 'Geen verbinding met de AI-assistent. Controleer je internetverbinding en probeer het opnieuw.' }));
+    } finally {
+      aiBusy = false;
+      aiSendBtn.disabled = false;
+      aiMessagesEl.scrollTop = aiMessagesEl.scrollHeight;
+    }
+  }
+
+  $('#aiForm').addEventListener('submit', e => { e.preventDefault(); sendAiMessage(); });
+  $('#aiChatBtn').addEventListener('click', () => openAiChat());
+  $('#aiChatClose').addEventListener('click', () => aiDialog.close());
 
   // ---------- instellingen ----------
   function buildSettings() {
