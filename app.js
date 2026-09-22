@@ -12,7 +12,8 @@
   //  1.6.0 - AI-assistent (chat + uitleg bij resultaat) via bestaande toto-proxy Worker
   //  1.7.0 - Zachtblauw kleurthema, AI-chatvenster hoger op het scherm
   //  1.8.0 - Waarschuwing bij onbetrouwbare ingrediëntentekst (voorkomt vals-groene uitslag)
-  const APP_VERSION = '1.8.0';
+  //  1.9.0 - Scherpte-check bij foto van etiket (waarschuwt vóór OCR bij een wazige foto) + lichte verscherping
+  const APP_VERSION = '1.9.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -362,45 +363,91 @@
     return ocrWorker;
   }
 
-  // Schaalt naar een redelijke breedte en zet om naar grijs + meer contrast: helpt OCR op gebogen verpakkingen.
-  function prepImage(file) {
+  function loadImageEl(file) {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
-      img.onload = () => {
-        const maxW = 1800;
-        const scale = Math.min(1, maxW / img.width);
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
-        const c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        const ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-        const id = ctx.getImageData(0, 0, w, h);
-        const d = id.data;
-        for (let i = 0; i < d.length; i += 4) {
-          const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-          const v = Math.min(255, Math.max(0, (g - 128) * 1.4 + 128));
-          d[i] = d[i + 1] = d[i + 2] = v;
-        }
-        ctx.putImageData(id, 0, 0);
-        URL.revokeObjectURL(url);
-        resolve(c);
-      };
+      img.onload = () => resolve({ img, url });
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Kon de foto niet laden.')); };
       img.src = url;
     });
   }
 
-  ocrBtn.addEventListener('click', () => ocrInput.click());
-  ocrInput.addEventListener('change', async () => {
-    const file = ocrInput.files && ocrInput.files[0];
-    ocrInput.value = '';
-    if (!file) return;
+  // Grove maat voor scherpte: variantie van een Laplaciaan-filter op een verkleinde grijswaarden-versie.
+  // Een scherpe foto heeft veel harde randjes (hoge variantie), een wazige foto is "vlak" (lage variantie).
+  const BLUR_THRESHOLD = 35;
+  function blurScore(img) {
+    const w = 400;
+    const scale = Math.min(1, w / img.width);
+    const cw = Math.max(2, Math.round(img.width * scale));
+    const ch = Math.max(2, Math.round(img.height * scale));
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, cw, ch);
+    const d = ctx.getImageData(0, 0, cw, ch).data;
+    const gray = new Float32Array(cw * ch);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) gray[p] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    let sum = 0, sumSq = 0, n = 0;
+    for (let y = 1; y < ch - 1; y++) {
+      for (let x = 1; x < cw - 1; x++) {
+        const i = y * cw + x;
+        const lap = gray[i - 1] + gray[i + 1] + gray[i - cw] + gray[i + cw] - 4 * gray[i];
+        sum += lap; sumSq += lap * lap; n++;
+      }
+    }
+    if (!n) return 0;
+    const mean = sum / n;
+    return sumSq / n - mean * mean;
+  }
+
+  // Schaalt naar een redelijke breedte, zet om naar grijs + meer contrast, en verscherpt licht:
+  // helpt OCR op gebogen verpakkingen en enigszins zachte foto's.
+  function prepCanvas(img) {
+    const maxW = 1800;
+    const scale = Math.min(1, maxW / img.width);
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    const id = ctx.getImageData(0, 0, w, h);
+    const d = id.data;
+    const gray = new Float32Array(w * h);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+      const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      gray[p] = Math.min(255, Math.max(0, (g - 128) * 1.4 + 128));
+    }
+    // lichte unsharp mask: origineel + gewicht * (origineel - buren)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const up = y > 0 ? gray[i - w] : gray[i], down = y < h - 1 ? gray[i + w] : gray[i];
+        const left = x > 0 ? gray[i - 1] : gray[i], right = x < w - 1 ? gray[i + 1] : gray[i];
+        // lichte unsharp mask: origineel + 0.5 * (origineel - gemiddelde van buren)
+        const v = Math.min(255, Math.max(0, gray[i] * 1.5 - 0.125 * (up + down + left + right)));
+        const o = i * 4;
+        d[o] = d[o + 1] = d[o + 2] = v;
+      }
+    }
+    ctx.putImageData(id, 0, 0);
+    return c;
+  }
+
+  let pendingOcrImg = null; // { img, url } — bewaard zodat "Toch doorgaan" niet opnieuw hoeft te fotograferen
+  const blurWarnEl = $('#ocrBlurWarn');
+
+  function cleanupPendingImg() {
+    if (pendingOcrImg) { URL.revokeObjectURL(pendingOcrImg.url); pendingOcrImg = null; }
+  }
+
+  async function runOcr({ img, url }) {
     ocrBtn.disabled = true;
+    blurWarnEl.hidden = true;
     setOcrStatus('Foto verwerken…', true);
     try {
-      const canvas = await prepImage(file);
+      const canvas = prepCanvas(img);
       const worker = await getOcrWorker();
       const { data } = await worker.recognize(canvas);
       const text = (data.text || '').replace(/\s*\n+\s*/g, ', ').replace(/,\s*,+/g, ',').trim();
@@ -416,7 +463,44 @@
       setOcrStatus('Herkenning mislukt: ' + (e && e.message ? e.message : 'onbekende fout') + '. Typ de ingrediënten anders zelf over.', true);
     } finally {
       ocrBtn.disabled = false;
+      URL.revokeObjectURL(url);
     }
+  }
+
+  ocrBtn.addEventListener('click', () => ocrInput.click());
+  ocrInput.addEventListener('change', async () => {
+    const file = ocrInput.files && ocrInput.files[0];
+    ocrInput.value = '';
+    if (!file) return;
+    cleanupPendingImg();
+    blurWarnEl.hidden = true;
+    ocrBtn.disabled = true;
+    setOcrStatus('Foto verwerken…', true);
+    try {
+      const loaded = await loadImageEl(file);
+      if (blurScore(loaded.img) < BLUR_THRESHOLD) {
+        pendingOcrImg = loaded;
+        setOcrStatus('', false);
+        blurWarnEl.hidden = false;
+        ocrBtn.disabled = false;
+        return;
+      }
+      await runOcr(loaded);
+    } catch (e) {
+      setOcrStatus('Herkenning mislukt: ' + (e && e.message ? e.message : 'onbekende fout') + '. Typ de ingrediënten anders zelf over.', true);
+      ocrBtn.disabled = false;
+    }
+  });
+
+  $('#ocrRetake').addEventListener('click', () => {
+    cleanupPendingImg();
+    blurWarnEl.hidden = true;
+    setOcrStatus('', false);
+    ocrInput.click();
+  });
+  $('#ocrProceed').addEventListener('click', () => {
+    blurWarnEl.hidden = true;
+    if (pendingOcrImg) { const img = pendingOcrImg; pendingOcrImg = null; runOcr(img); }
   });
 
   // ---------- zoeken ----------

@@ -163,9 +163,17 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     <div class="card">
       <h2 style="font-size:18px">Ingrediëntenlijst controleren</h2>
       <p id="txtHint" class="msg"></p>
-      <button id="ocrBtn" type="button" class="btn block" style="margin-bottom:10px">Foto van etiket</button>
+      <button id="ocrBtn" type="button" class="btn block" style="margin-bottom:4px">Foto van etiket</button>
+      <p class="msg" style="margin-top:0">Tip voor een scherpe foto: ga dicht bij de tekst staan, zorg voor goed licht en houd je telefoon stil tot hij scherpstelt.</p>
       <input id="ocrInput" type="file" accept="image/*" capture="environment" hidden>
       <p id="ocrStatus" class="msg" hidden aria-live="polite"></p>
+      <div id="ocrBlurWarn" class="card" style="background:var(--mod-bg);border-color:var(--mod);margin:0 0 12px" hidden>
+        <p class="small" style="margin:0 0 10px;color:var(--fg)">Deze foto lijkt onscherp — de tekstherkenning wordt dan vaak onbetrouwbaar. Probeer dichterbij, met meer licht en een stille hand, of ga toch door.</p>
+        <div class="actions" style="margin-top:0">
+          <button id="ocrRetake" type="button" class="btn">Andere foto maken</button>
+          <button id="ocrProceed" type="button" class="btn ghost">Toch doorgaan</button>
+        </div>
+      </div>
       <label class="lbl" for="txtName">Naam (optioneel)</label>
       <input id="txtName" type="text" placeholder="Bijv. tomatensoep">
       <label class="lbl" for="txtIngr">Ingrediënten</label>
