@@ -11,7 +11,8 @@
   //  1.5.1 - Fix: melk met lactase-enzym (lactosevrij) werd onterecht als hoog-FODMAP gezien
   //  1.6.0 - AI-assistent (chat + uitleg bij resultaat) via bestaande toto-proxy Worker
   //  1.7.0 - Zachtblauw kleurthema, AI-chatvenster hoger op het scherm
-  const APP_VERSION = '1.7.0';
+  //  1.8.0 - Waarschuwing bij onbetrouwbare ingrediëntentekst (voorkomt vals-groene uitslag)
+  const APP_VERSION = '1.8.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -66,8 +67,23 @@
     high: { cls: 'high', title: 'Hoog FODMAP', sub: 'Bevat ingrediënten die vaak klachten geven.' },
     moderate: { cls: 'mod', title: 'Matig FODMAP', sub: 'Bij dit product is de portiegrootte bepalend.' },
     low: { cls: 'low', title: 'Geen FODMAP-ingrediënten gevonden', sub: 'Op basis van de ingrediëntenlijst en jouw instellingen.' },
-    unknown: { cls: 'unk', title: 'Geen ingrediënten beschikbaar', sub: 'Plak de ingrediëntenlijst zelf om te controleren.' }
+    unknown: { cls: 'unk', title: 'Geen ingrediënten beschikbaar', sub: 'Plak de ingrediëntenlijst zelf om te controleren.' },
+    lowSuspect: { cls: 'unk', title: 'Onduidelijk — controleer zelf', sub: 'De ingrediëntentekst van dit product lijkt onvolledig of niet kloppend (vaak een fout in Open Food Facts). Er zijn geen FODMAPs herkend, maar vertrouw dit niet blind: maak een foto van het etiket of typ de lijst handmatig over.' }
   };
+
+  // Herkent ingrediëntentekst die er niet uitziet als een echte ingrediëntenlijst
+  // (bijv. kapotte/foutieve data uit Open Food Facts) zodat we niet ten onrechte
+  // "Geen FODMAP gevonden" tonen terwijl de tekst eigenlijk onbruikbaar is.
+  function looksUnreliable(text) {
+    if (!text) return false;
+    const t = String(text).trim();
+    if (t.length < 15) return false; // te kort om zinvol te beoordelen
+    if (/&(?:gt|lt|amp|quot|#\d+);/i.test(t)) return true; // onverwerkte HTML-entities
+    if (/\b(galaxy|iphone|redmi|xiaomi|huawei|pixel)\s*[a-z]?\s*\d/i.test(t)) return true; // telefoonmodel in de tekst
+    const commas = (t.match(/,/g) || []).length;
+    if (t.length > 80 && commas < 2) return true; // lange tekst zonder opsomming: geen echte ingrediëntenlijst
+    return false;
+  }
 
   function describeHit(hit, total) {
     let s = 'Gevonden als “' + hit.terms.join(', ') + '”';
@@ -80,7 +96,8 @@
   function renderResult(target, data, actions) {
     shown[target.id] = { data, actions };
     const res = F.analyze(data.text, enabled());
-    const v = VERDICT[res.verdict];
+    const suspect = res.verdict === 'low' && looksUnreliable(data.text);
+    const v = suspect ? VERDICT.lowSuspect : VERDICT[res.verdict];
 
     const card = h('section', { class: 'card result' },
       h('div', { class: 'prod' },
@@ -115,11 +132,12 @@
       card.append(p);
     }
 
+    const verdictKey = suspect ? 'lowSuspect' : res.verdict;
     const acts = actions ? actions(res) : [];
     if (data.text) {
       const diaryBtn = h('button', {
         class: 'btn ghost', type: 'button', onclick: () => {
-          addDiaryItem(data.title || 'Product', res.verdict, data.source || (data.barcode ? 'Scan' : 'Handmatig'));
+          addDiaryItem(data.title || 'Product', verdictKey, data.source || (data.barcode ? 'Scan' : 'Handmatig'));
           diaryBtn.textContent = 'Toegevoegd aan dagboek ✓';
           diaryBtn.disabled = true;
         }
@@ -129,7 +147,7 @@
       const askBtn = h('button', {
         class: 'btn ghost', type: 'button', onclick: () => {
           const hitNames = res.hits.map(hh => hh.name).join(', ') || 'geen specifieke FODMAP-treffers';
-          const prefill = 'Ik heb "' + (data.title || 'dit product') + '" gescand. Uitslag: ' + VERDICT[res.verdict].title +
+          const prefill = 'Ik heb "' + (data.title || 'dit product') + '" gescand. Uitslag: ' + v.title +
             '. Gevonden: ' + hitNames + '. Ingrediënten: ' + data.text + '. Kun je uitleggen waarom, en of ik het in een kleine portie zou kunnen proberen?';
           openAiChat(prefill);
         }
