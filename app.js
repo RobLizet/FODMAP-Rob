@@ -10,7 +10,8 @@
   //  1.5.0 - Snelkoppelingen "Barcode scannen"/"Foto van etiket" in het Dagboek
   //  1.5.1 - Fix: melk met lactase-enzym (lactosevrij) werd onterecht als hoog-FODMAP gezien
   //  1.6.0 - AI-assistent (chat + uitleg bij resultaat) via bestaande toto-proxy Worker
-  const APP_VERSION = '1.6.0';
+  //  1.7.0 - Zachtblauw kleurthema, AI-chatvenster hoger op het scherm
+  const APP_VERSION = '1.7.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.

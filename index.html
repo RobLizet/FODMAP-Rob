@@ -5,20 +5,20 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>FODMAP Scanner</title>
 <meta name="description" content="Scan een barcode of plak een ingrediëntenlijst en zie direct welke FODMAPs erin zitten.">
-<meta name="theme-color" content="#c99a5b">
+<meta name="theme-color" content="#4f8fc7">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{
-  --bg:#f7f0e2;--card:#fffcf5;--fg:#3d3223;--muted:#8a7a5f;--line:#e6d8ba;--accent:#c99a5b;
-  --high:#c15f4e;--mod:#b8863c;--low:#7a9165;--unk:#8a7f6e;
-  --high-bg:#f8e6e0;--mod-bg:#f6ecd6;--low-bg:#e9efe2;--unk-bg:#efe8d9;
+  --bg:#eef5fb;--card:#ffffff;--fg:#233242;--muted:#6b849a;--line:#d3e3ee;--accent:#4f8fc7;
+  --high:#c15f4e;--mod:#b8863c;--low:#4f9d78;--unk:#7c8fa0;
+  --high-bg:#f8e6e0;--mod-bg:#f6efd6;--low-bg:#e2f2e8;--unk-bg:#e5edf5;
 }
 @media (prefers-color-scheme:dark){
-  :root{--bg:#221c14;--card:#2d2519;--fg:#f2e9d8;--muted:#c2b295;--line:#463a28;--accent:#dcb178;
-    --high:#e28575;--mod:#e0b463;--low:#a0bd8a;
-    --high-bg:#3f2820;--mod-bg:#3a3020;--low-bg:#28321f;--unk-bg:#33291d;}
+  :root{--bg:#131d27;--card:#1c2b38;--fg:#e7f1f8;--muted:#9db3c4;--line:#2c4051;--accent:#7fb4de;
+    --high:#e28575;--mod:#e0b463;--low:#8fca9f;
+    --high-bg:#3f2820;--mod-bg:#3a3020;--low-bg:#1f3226;--unk-bg:#24333f;}
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -112,7 +112,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .grp input{width:22px;height:22px;margin-top:2px;accent-color:var(--accent)}
 
 /* AI-chat */
-#aiChatDialog{display:flex;flex-direction:column;max-height:85dvh;height:min(640px,85dvh);padding:14px}
+#aiChatDialog[open]{display:flex;flex-direction:column;max-height:80dvh;height:min(560px,80dvh);padding:14px;margin-top:5dvh;margin-bottom:auto}
 .ai-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex:none}
 .ai-head h2{font-size:17px}
 .ai-head button{background:none;border:0;color:var(--muted);font-size:24px;line-height:1;padding:0 4px;cursor:pointer}
