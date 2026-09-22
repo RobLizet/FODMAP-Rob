@@ -194,8 +194,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
   <section id="view-diary" class="view">
     <div class="card">
       <h2 style="font-size:18px">Wat heb je gegeten?</h2>
-      <p class="msg">Vul in wat je vandaag hebt gegeten of gedronken. Wil je het eerst laten checken op FODMAPs? Gebruik dan Analyseren.</p>
-      <textarea id="diaryInput" placeholder="Bijv. tosti met kaas, glas cola" style="min-height:70px"></textarea>
+      <p class="msg">Scan een barcode of maak een foto van het etiket om het product te checken én meteen aan je dagboek toe te voegen — of vul hieronder handmatig iets in.</p>
+      <div class="actions" style="margin-bottom:10px">
+        <button id="diaryScan" class="btn">Barcode scannen</button>
+        <button id="diaryPhoto" class="btn ghost">Foto van etiket</button>
+      </div>
+      <textarea id="diaryInput" placeholder="Of typ hier direct wat je hebt gegeten, bijv. tosti met kaas, glas cola" style="min-height:70px"></textarea>
       <div class="actions">
         <button id="diaryAdd" class="btn">Toevoegen aan dagboek</button>
         <button id="diaryToText" class="btn ghost">Eerst analyseren</button>

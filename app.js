@@ -7,7 +7,8 @@
   //  1.2.0 - Franse/Duitse ingrediëntnamen herkend (fix appelsap-bug)
   //  1.3.0 - Dagboek-tabblad (gegeten items + notitie per dag)
   //  1.4.0 - Crème/karamel kleurthema
-  const APP_VERSION = '1.4.0';
+  //  1.5.0 - Snelkoppelingen "Barcode scannen"/"Foto van etiket" in het Dagboek
+  const APP_VERSION = '1.5.0';
 
   const F = window.FODMAP;
   const $ = (s, el = document) => el.querySelector(s);
@@ -490,6 +491,19 @@
     $('#textResult').replaceChildren();
     showView('text');
     $('#txtIngr').focus();
+  });
+  $('#diaryScan').addEventListener('click', () => {
+    showView('scan');
+    startCamera();
+  });
+  $('#diaryPhoto').addEventListener('click', () => {
+    pendingBarcode = '';
+    $('#txtName').value = '';
+    $('#txtIngr').value = '';
+    $('#txtHint').textContent = 'Maak een foto van het etiket — de tekst verschijnt hieronder om te controleren.';
+    $('#textResult').replaceChildren();
+    showView('text');
+    ocrInput.click();
   });
 
   // ---------- instellingen ----------
