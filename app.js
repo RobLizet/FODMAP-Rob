@@ -1,6 +1,13 @@
 (function () {
   'use strict';
 
+  // Versiehistorie:
+  //  1.0.0 - Scan, tekst-check, zoeken, historie
+  //  1.1.0 - Foto-herkenning (OCR) van etiketten toegevoegd
+  //  1.2.0 - Franse/Duitse ingrediëntnamen herkend (fix appelsap-bug)
+  //  1.3.0 - Dagboek-tabblad (gegeten items + notitie per dag)
+  const APP_VERSION = '1.3.0';
+
   const F = window.FODMAP;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
@@ -30,6 +37,7 @@
 
   let settings = Object.assign({ groups: Object.keys(F.GROUPS) }, store.get('settings', {}));
   let history = store.get('history', []);
+  let diary = store.get('diary', {}); // { 'YYYY-MM-DD': { items: [{text, verdict, source, t}], note: '' } }
   const shown = {};           // container-id -> {data, actions}
   let pendingBarcode = '';
 
@@ -89,6 +97,16 @@
     }
 
     const acts = actions ? actions(res) : [];
+    if (data.text) {
+      const diaryBtn = h('button', {
+        class: 'btn ghost', type: 'button', onclick: () => {
+          addDiaryItem(data.title || 'Product', res.verdict, data.source || (data.barcode ? 'Scan' : 'Handmatig'));
+          diaryBtn.textContent = 'Toegevoegd aan dagboek ✓';
+          diaryBtn.disabled = true;
+        }
+      }, 'Voeg toe aan dagboek');
+      acts.push(diaryBtn);
+    }
     if (acts && acts.length) card.append(h('div', { class: 'actions' }, acts));
     card.append(h('p', { class: 'disc', text: 'Indicatief en zonder portiegroottes. Geen medisch advies.' }));
 
@@ -396,6 +414,83 @@
     history = []; store.set('history', history); renderHistory(); $('#histResult').replaceChildren();
   });
 
+  // ---------- dagboek ----------
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function dateKey(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function todayKey() { return dateKey(new Date()); }
+
+  function dayHeading(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    const label = dt.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (key === todayKey()) return 'Vandaag · ' + label;
+    if (key === dateKey(new Date(Date.now() - 86400000))) return 'Gisteren · ' + label;
+    return label;
+  }
+
+  function addDiaryItem(text, verdict, source) {
+    const key = todayKey();
+    if (!diary[key]) diary[key] = { items: [], note: '' };
+    diary[key].items.push({ text: (text || '').trim() || 'Item', verdict: verdict || '', source: source || 'Handmatig', t: Date.now() });
+    store.set('diary', diary);
+    renderDiary();
+  }
+
+  function setDiaryNote(key, note) {
+    if (!diary[key]) diary[key] = { items: [], note: '' };
+    diary[key].note = note;
+    store.set('diary', diary);
+  }
+
+  function renderDiary() {
+    const list = $('#diaryList');
+    const keys = Array.from(new Set([todayKey(), ...Object.keys(diary)])).sort().reverse();
+    const visible = keys.filter(k => k === todayKey() || (diary[k] && (diary[k].items.length || (diary[k].note || '').trim())));
+    $('#diaryEmpty').hidden = visible.some(k => diary[k] && (diary[k].items.length || (diary[k].note || '').trim()));
+
+    list.replaceChildren(...visible.map(key => {
+      const day = diary[key] || { items: [], note: '' };
+      const noteArea = h('textarea', {
+        placeholder: 'Notitie voor deze dag (bijv. klachten, hoe je je voelde)…',
+        style: 'min-height:60px;margin-top:8px',
+        oninput: e => setDiaryNote(key, e.target.value)
+      });
+      noteArea.value = day.note || '';
+
+      const itemsList = day.items.length
+        ? h('ul', { class: 'list' }, day.items.map((it, i) => h('li', null,
+            h('span', { class: 'dot ' + (LV[it.verdict] || 'unsure'), style: 'margin-top:6px' }),
+            h('div', { class: 'grow' },
+              h('b', { text: it.text }),
+              h('div', { class: 'muted small', text: [VERDICT[it.verdict] ? VERDICT[it.verdict].title : 'Niet gecontroleerd', it.source, new Date(it.t).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · ') })),
+            h('button', { class: 'x', 'aria-label': 'Verwijderen', onclick: () => { day.items.splice(i, 1); store.set('diary', diary); renderDiary(); } }, '×'))))
+        : h('p', { class: 'muted small', style: 'margin-top:8px' }, 'Nog geen items voor deze dag.');
+
+      return h('section', { class: 'card' },
+        h('div', { class: 'row', style: 'align-items:center;margin-bottom:2px' },
+          h('h3', { style: 'font-size:15px;text-transform:none;letter-spacing:0;color:inherit;margin:0', text: dayHeading(key) })),
+        itemsList,
+        noteArea);
+    }));
+  }
+
+  $('#diaryAdd').addEventListener('click', () => {
+    const text = $('#diaryInput').value.trim();
+    if (!text) return;
+    addDiaryItem(text, '', 'Handmatig');
+    $('#diaryInput').value = '';
+  });
+  $('#diaryToText').addEventListener('click', () => {
+    const text = $('#diaryInput').value.trim();
+    pendingBarcode = '';
+    $('#txtName').value = '';
+    $('#txtIngr').value = text;
+    $('#txtHint').textContent = '';
+    $('#textResult').replaceChildren();
+    showView('text');
+    $('#txtIngr').focus();
+  });
+
   // ---------- instellingen ----------
   function buildSettings() {
     const box = $('#groupBox');
@@ -441,4 +536,7 @@
   buildSettings();
   renderSearch();
   renderHistory();
+  renderDiary();
+  const verEl = $('#appVersion');
+  if (verEl) verEl.textContent = 'Versie ' + APP_VERSION;
 })();
