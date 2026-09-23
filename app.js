@@ -32,7 +32,10 @@
   //  2.7.0 - Eiwitdoel (instelbaar, standaard 90 g) als voortgangsbalk in het dagboek;
   //          favorieten (hartje) en "recent gegeten" in Product zoeken, met onthouden eenheid;
   //          professionelere vormgeving (nieuwe header, kaarten, tegels, navigatie)
-  const APP_VERSION = '2.7.0';
+  //  2.7.1 - Dagnotitie: zichtbare bevestiging "Opgeslagen ✓" (notitie werd al automatisch bewaard)
+  //  2.7.2 - Merkproducten krijgen ook huishoudmaten (glas, beker, schaaltje, plak, snee…) op basis
+  //          van productnaam/categorie; nietszeggende "portie (100 gram)" van Open Food Facts vervalt
+  const APP_VERSION = '2.7.2';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -295,6 +298,39 @@
     return { protein, kcal };
   }
 
+  // Huishoudmaten voor merkproducten, herkend aan naam/categorie. Eerste passende regel wint.
+  const HOUSEHOLD_RULES = [
+    [/koffiemelk|koffiecreamer|coffee creamer/, [['cupje / scheutje', 7], ['eetlepel', 15]]],
+    [/drink|drank|\bsap\b|sinaasappelsap|appelsap|juice|smoothie|limonade|frisdrank|\bcola\b|ice ?tea|chocomel|chocolademelk|kefir/, [['glas', 200], ['beker', 250], ['blikje / flesje', 330]]],
+    [/chocolade|chocolate|\breep\b/, [['blokje', 5], ['reep', 100]]],
+    [/yoghurt|yogurt|kwark|skyr|\bvla\b|pudding|griekse|kwarkt|hangop/, [['schaaltje', 150], ['eetlepel', 15]]],
+    [/melk|milk|\blait\b|milch|karnemelk/, [['glas', 200], ['beker', 250], ['kopje', 125], ['scheutje', 15]]],
+    [/roomkaas|smeerkaas|zuivelspread|hummus|pindakaas|notenpasta|chocoladepasta|\bjam\b|confiture|hagelslag|appelstroop|salade\b/, [['voor 1 snee', 15], ['eetlepel', 15]]],
+    [/kaas|cheese|fromage|gouda|cheddar|emmentaler/, [['plak', 20], ['blokje', 10]]],
+    [/roomboter|\bboter\b|butter|margarine|halvarine|becel|blue band|\bbona\b/, [['voor 1 snee', 6], ['eetlepel', 15], ['theelepel', 5]]],
+    [/beschuit/, [['stuk', 10]]],
+    [/rijstwafel|crackers?\b|knackebrod|knäckebröd/, [['stuk', 10]]],
+    [/bolletje|pistolet|broodje|\bbol\b/, [['stuk', 50]]],
+    [/brood|bread|volkoren|meergranen|zuurdesem/, [['snee', 35]]],
+    [/havermout|oats|muesli|granola|cruesli|cornflakes|cereal|ontbijtgranen/, [['portie', 40], ['eetlepel', 10]]],
+    [/\bolie\b|olijfolie|\boil\b/, [['eetlepel', 15], ['theelepel', 5]]],
+    [/mayonaise|mayo|ketchup|saus|dressing|mosterd/, [['eetlepel', 15], ['theelepel', 5]]],
+    [/\bham\b|achterham|kipfilet|rookvlees|salami|filet americain|vleeswaren|leverworst|cervelaat/, [['plak', 15]]],
+    [/\bei\b|eieren|\beggs?\b/, [['stuk', 55]]],
+    [/whey|eiwitpoeder|protein powder|proteine/, [['schep', 30]]]
+  ];
+  function householdPortions(text) {
+    const t = String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    for (const [re, ports] of HOUSEHOLD_RULES) if (re.test(t)) return ports;
+    return [];
+  }
+  // Voegt huishoudmaten toe aan bestaande porties (zonder dubbele labels); huishoudmaten eerst
+  function augmentPortions(portions, text) {
+    const base = (portions || []).filter(p => !(p[0] === 'portie' && Math.abs(p[1] - 100) < 0.5)); // "portie (100 g)" = zinloos
+    const extra = householdPortions(text).filter(e => !base.some(b => b[0] === e[0]));
+    return extra.concat(base);
+  }
+
   // Portie-eenheden uit Open Food Facts: [label, gram]. Gebruikt serving_quantity/serving_size
   // (bijv. "1 capsule (7 g)") en de verpakkingsinhoud. "gram" komt er in de dialoog altijd bij.
   function offPortions(p) {
@@ -313,7 +349,7 @@
     if (pq > 0 && pq <= 2000 && (pu === 'g' || pu === 'ml') && !(sq > 0 && Math.abs(pq - sq) < 1)) {
       out.push(['hele verpakking', Math.round(pq)]);
     }
-    return out;
+    return augmentPortions(out, [p.product_name, p.generic_name, p.categories].filter(Boolean).join(' '));
   }
 
   async function lookup(raw) {
@@ -329,7 +365,7 @@
       const ctrl = new AbortController();
       const to = setTimeout(() => ctrl.abort(), 12000);
       const r = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code +
-        '.json?fields=code,product_name,brands,image_front_small_url,ingredients_text,ingredients_text_nl,ingredients_text_en,nutriments,serving_size,serving_quantity,product_quantity,product_quantity_unit',
+        '.json?fields=code,product_name,brands,image_front_small_url,ingredients_text,ingredients_text_nl,ingredients_text_en,nutriments,serving_size,serving_quantity,product_quantity,product_quantity_unit,categories,generic_name',
         { signal: ctrl.signal });
       clearTimeout(to);
       const j = await r.json();
@@ -459,7 +495,7 @@
       const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + encodeURIComponent(term) +
         '&search_simple=1&action=process&json=1&page_size=20&sort_by=unique_scans_n' +
         '&tagtype_0=countries&tag_contains_0=contains&tag_0=netherlands' +
-        '&fields=code,product_name,brands,nutriments,ingredients_text_nl,ingredients_text,ingredients_text_en,image_front_small_url,serving_size,serving_quantity,product_quantity,product_quantity_unit';
+        '&fields=code,product_name,brands,nutriments,ingredients_text_nl,ingredients_text,ingredients_text_en,image_front_small_url,serving_size,serving_quantity,product_quantity,product_quantity_unit,categories,generic_name';
       const r = await fetch(url, { signal: productSearchAbort.signal });
       const j = await r.json();
       offShown = (j.products || []).filter(p => p.product_name);
@@ -1051,6 +1087,10 @@
     diaryEditCtx = null;
     diaryAddCtx = { text, verdict, source, per100: per100 || null, brand: brand || null, portions: portions || null };
     dlgPer100 = per100 || null;
+    if (per100 && source !== 'Basisproduct') {
+      portions = augmentPortions(portions, text);
+      diaryAddCtx.portions = portions.length ? portions : null;
+    }
     $('#diaryAddTitle').textContent = 'Toevoegen aan dagboek';
     $('#diaryAddConfirm').textContent = 'Toevoegen';
     $('#diaryAddProduct').textContent = text;
@@ -1082,6 +1122,10 @@
     $('#diaryAddConfirm').textContent = 'Opslaan';
     $('#diaryAddProduct').textContent = it.text;
     selectMealChip(it.meal || 'snack');
+    if (it.per100 && it.source !== 'Basisproduct') {
+      const aug = augmentPortions(it.portions, it.text);
+      it.portions = aug.length ? aug : null;
+    }
     setupUnits(it.portions);
     const idx = it.unit ? dlgUnits.findIndex(u => !u.gram && u.label === it.unit) : -1;
     if (idx >= 0 && it.count) {
@@ -1161,9 +1205,18 @@
     list.replaceChildren(...visible.map(key => {
       const day = diary[key] || { items: [], note: '' };
       const isToday = key === todayKey();
+      const noteSaved = h('div', { class: 'note-saved', 'aria-live': 'polite' });
+      let noteTimer = null;
       const noteArea = h('textarea', {
-        class: 'note', placeholder: 'Notitie voor deze dag (bijv. klachten, hoe je je voelde)…',
-        oninput: e => setDiaryNote(key, e.target.value)
+        class: 'note', placeholder: 'Notitie voor deze dag (bijv. klachten, hoe je je voelde)… — wordt automatisch opgeslagen',
+        oninput: e => {
+          setDiaryNote(key, e.target.value);
+          noteSaved.textContent = 'Opgeslagen ✓';
+          noteSaved.classList.add('show');
+          clearTimeout(noteTimer);
+          noteTimer = setTimeout(() => noteSaved.classList.remove('show'), 2000);
+        },
+        onblur: () => { noteSaved.classList.remove('show'); }
       });
       noteArea.value = day.note || '';
 
@@ -1225,7 +1278,8 @@
         h('h3', { class: 'day-title', text: dayHeading(key) }),
         goalBlock,
         itemsBlock,
-        noteArea);
+        noteArea,
+        noteSaved);
     }));
   }
 
