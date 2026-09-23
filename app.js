@@ -235,10 +235,11 @@
     pendingBarcode = barcode || '';
     $('#txtName').value = title || '';
     $('#txtIngr').value = '';
-    $('#txtHint').textContent = 'Maak een foto van het etiket, of kies er een uit je galerij — de tekst verschijnt hieronder om te controleren.';
+    $('#txtHint').textContent = 'Maak een foto van het etiket — de tekst verschijnt hieronder om te controleren.';
     $('#textResult').replaceChildren();
     showView('text');
-    ocrInput.click();
+    lastOcrInput = ocrInputCam;
+    ocrInputCam.click();
   }
 
   // ---------- scannen ----------
@@ -647,8 +648,15 @@
   });
 
   // ---------- foto / OCR ----------
-  const ocrBtn = $('#ocrBtn');
-  const ocrInput = $('#ocrInput');
+  // Twee losse bestandsvelden: één met capture (opent direct de camera), één zonder
+  // (opent de galerij/bestandskiezer) — op veel toestellen verbergt "capture" de galerij-optie,
+  // en zonder "capture" tonen sommige toestellen geen directe cameraknop meer.
+  const ocrBtnCam = $('#ocrBtnCam');
+  const ocrBtnGal = $('#ocrBtnGal');
+  const ocrInputCam = $('#ocrInputCam');
+  const ocrInputGal = $('#ocrInputGal');
+  const ocrBtns = [ocrBtnCam, ocrBtnGal];
+  let lastOcrInput = ocrInputCam;
   const ocrStatusEl = $('#ocrStatus');
   let ocrWorker = null;
 
@@ -743,7 +751,7 @@
   }
 
   async function runOcr({ img, url }) {
-    ocrBtn.disabled = true;
+    ocrBtns.forEach(b => b.disabled = true);
     blurWarnEl.hidden = true;
     setOcrStatus('Foto verwerken…', true);
     try {
@@ -762,19 +770,19 @@
     } catch (e) {
       setOcrStatus('Herkenning mislukt: ' + (e && e.message ? e.message : 'onbekende fout') + '. Typ de ingrediënten anders zelf over.', true);
     } finally {
-      ocrBtn.disabled = false;
+      ocrBtns.forEach(b => b.disabled = false);
       URL.revokeObjectURL(url);
     }
   }
 
-  ocrBtn.addEventListener('click', () => ocrInput.click());
-  ocrInput.addEventListener('change', async () => {
-    const file = ocrInput.files && ocrInput.files[0];
-    ocrInput.value = '';
+  async function handleOcrFile(input) {
+    const file = input.files && input.files[0];
+    input.value = '';
     if (!file) return;
+    lastOcrInput = input;
     cleanupPendingImg();
     blurWarnEl.hidden = true;
-    ocrBtn.disabled = true;
+    ocrBtns.forEach(b => b.disabled = true);
     setOcrStatus('Foto verwerken…', true);
     try {
       const loaded = await loadImageEl(file);
@@ -782,21 +790,25 @@
         pendingOcrImg = loaded;
         setOcrStatus('', false);
         blurWarnEl.hidden = false;
-        ocrBtn.disabled = false;
+        ocrBtns.forEach(b => b.disabled = false);
         return;
       }
       await runOcr(loaded);
     } catch (e) {
       setOcrStatus('Herkenning mislukt: ' + (e && e.message ? e.message : 'onbekende fout') + '. Typ de ingrediënten anders zelf over.', true);
-      ocrBtn.disabled = false;
+      ocrBtns.forEach(b => b.disabled = false);
     }
-  });
+  }
+  ocrBtnCam.addEventListener('click', () => { lastOcrInput = ocrInputCam; ocrInputCam.click(); });
+  ocrBtnGal.addEventListener('click', () => { lastOcrInput = ocrInputGal; ocrInputGal.click(); });
+  ocrInputCam.addEventListener('change', () => handleOcrFile(ocrInputCam));
+  ocrInputGal.addEventListener('change', () => handleOcrFile(ocrInputGal));
 
   $('#ocrRetake').addEventListener('click', () => {
     cleanupPendingImg();
     blurWarnEl.hidden = true;
     setOcrStatus('', false);
-    ocrInput.click();
+    lastOcrInput.click();
   });
   $('#ocrProceed').addEventListener('click', () => {
     blurWarnEl.hidden = true;
@@ -1346,7 +1358,8 @@
     $('#txtHint').textContent = 'Maak een foto van het etiket — de tekst verschijnt hieronder om te controleren.';
     $('#textResult').replaceChildren();
     showView('text');
-    ocrInput.click();
+    lastOcrInput = ocrInputCam;
+    ocrInputCam.click();
   });
   $('#diarySearch').addEventListener('click', openProductSearch);
 
