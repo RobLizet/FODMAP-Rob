@@ -35,7 +35,8 @@
   //  2.7.1 - Dagnotitie: zichtbare bevestiging "Opgeslagen ✓" (notitie werd al automatisch bewaard)
   //  2.7.2 - Merkproducten krijgen ook huishoudmaten (glas, beker, schaaltje, plak, snee…) op basis
   //          van productnaam/categorie; nietszeggende "portie (100 gram)" van Open Food Facts vervalt
-  const APP_VERSION = '2.7.2';
+  //  2.7.3 - Signatuur "© 2026 Made by Rob Borghouts" in sierletters onderaan de app en in Instellingen
+  const APP_VERSION = '2.7.3';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
