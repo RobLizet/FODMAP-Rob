@@ -20,7 +20,8 @@
   //  2.1.0 - Product zoeken op naam (Open Food Facts), net als handmatig een barcode intypen
   //  2.2.0 - Back-up: instellingen, dagboek en historie exporteren/importeren als bestand
   //  2.3.0 - "Schat met AI" bij handmatige dagboek-items: AI vult eiwit/kcal-schatting in
-  const APP_VERSION = '2.3.0';
+  //  2.4.0 - Dagboek-items achteraf bewerken (maaltijd, hoeveelheid, eiwit, kcal)
+  const APP_VERSION = '2.4.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -690,6 +691,7 @@
   const diaryProteinInput = $('#diaryProteinInput');
   const diaryKcalInput = $('#diaryKcalInput');
   let diaryAddCtx = null; // { text, verdict, source, per100 }
+  let diaryEditCtx = null; // het bestaande item-object dat bewerkt wordt, of null bij toevoegen
 
   function selectMealChip(meal) {
     $$('#diaryMealChips .chip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.meal === meal)));
@@ -721,7 +723,8 @@
   }
 
   async function estimateNutrientsWithAi() {
-    if (!diaryAddCtx) return;
+    const ctxText = diaryEditCtx ? diaryEditCtx.text : (diaryAddCtx ? diaryAddCtx.text : null);
+    if (!ctxText) return;
     const btn = $('#diaryAiEstimate');
     const qty = parseFloat(diaryQtyEl.value);
     btn.disabled = true;
@@ -738,7 +741,7 @@
       ].join(' ');
       const res = await fetch(AI_ENDPOINT, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: AI_MODEL, max_tokens: 200, system: sys, messages: [{ role: 'user', content: 'Gerecht: ' + diaryAddCtx.text }] })
+        body: JSON.stringify({ model: AI_MODEL, max_tokens: 200, system: sys, messages: [{ role: 'user', content: 'Gerecht: ' + ctxText }] })
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 429) throw new Error(data.error || 'Daglimiet van de AI bereikt — probeer het morgen weer of vul zelf in.');
@@ -761,7 +764,10 @@
   $('#diaryAiEstimate').addEventListener('click', estimateNutrientsWithAi);
 
   function openDiaryAddDialog(text, verdict, source, per100) {
+    diaryEditCtx = null;
     diaryAddCtx = { text, verdict, source, per100: per100 || null };
+    $('#diaryAddTitle').textContent = 'Toevoegen aan dagboek';
+    $('#diaryAddConfirm').textContent = 'Toevoegen';
     $('#diaryAddProduct').textContent = text;
     selectMealChip(guessMeal());
     diaryQtyEl.value = per100 ? '100' : '';
@@ -780,8 +786,43 @@
     setTimeout(() => diaryQtyEl.focus(), 50);
   }
 
-  $('#diaryAddClose').addEventListener('click', () => diaryAddDialog.close());
+  function openDiaryEditDialog(it) {
+    diaryAddCtx = null;
+    diaryEditCtx = it;
+    $('#diaryAddTitle').textContent = 'Item wijzigen';
+    $('#diaryAddConfirm').textContent = 'Opslaan';
+    $('#diaryAddProduct').textContent = it.text;
+    selectMealChip(it.meal || 'snack');
+    diaryQtyEl.value = it.qty != null ? it.qty : '';
+    diaryProteinInput.value = it.protein != null ? it.protein : '';
+    diaryKcalInput.value = it.kcal != null ? it.kcal : '';
+    setDiaryAiStatus('', false);
+    // Bij bewerken altijd de handmatige velden tonen: de oorspronkelijke per-100g-gegevens
+    // (indien van een barcode/zoekresultaat) zijn niet per item bewaard, dus eiwit/kcal
+    // worden direct bewerkt in plaats van herberekend uit een percentage.
+    diaryManualBox.hidden = false;
+    diaryAutoNoteEl.hidden = true;
+    diaryAddDialog.showModal();
+    setTimeout(() => diaryProteinInput.focus(), 50);
+  }
+
+  $('#diaryAddClose').addEventListener('click', () => { diaryEditCtx = null; diaryAddDialog.close(); });
+  diaryAddDialog.addEventListener('close', () => { diaryEditCtx = null; });
   $('#diaryAddConfirm').addEventListener('click', () => {
+    if (diaryEditCtx) {
+      const qty = parseFloat(diaryQtyEl.value);
+      const pv = parseFloat(diaryProteinInput.value);
+      const kv = parseFloat(diaryKcalInput.value);
+      diaryEditCtx.meal = getSelectedMeal();
+      diaryEditCtx.qty = qty > 0 ? qty : null;
+      diaryEditCtx.protein = !isNaN(pv) ? pv : null;
+      diaryEditCtx.kcal = !isNaN(kv) ? Math.round(kv) : null;
+      store.set('diary', diary);
+      diaryEditCtx = null;
+      diaryAddDialog.close();
+      renderDiary();
+      return;
+    }
     if (!diaryAddCtx) return;
     const qty = parseFloat(diaryQtyEl.value);
     let protein = null, kcal = null;
@@ -850,6 +891,7 @@
                 new Date(it.t).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
               ].filter(Boolean).join(' · ')
             })),
+          h('button', { class: 'x', 'aria-label': 'Bewerken', style: 'font-size:16px', onclick: () => openDiaryEditDialog(it) }, '✎'),
           h('button', { class: 'x', 'aria-label': 'Verwijderen', onclick: () => { day.items.splice(day.items.indexOf(it), 1); store.set('diary', diary); renderDiary(); } }, '×'));
       }
 
