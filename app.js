@@ -24,7 +24,11 @@
   //  2.4.1 - AI-schatting eiwit/kcal: merknaam meegeven en voorzichtiger bij merkproducten
   //          (voorkomt te hoge schattingen zoals bij koffiecapsules), plus duidelijke
   //          waarschuwing dat een AI-schatting kan afwijken van de echte verpakking
-  const APP_VERSION = '2.4.1';
+  //  2.4.2 - Fix: "Product zoeken" gaf irrelevante treffers (bijv. Red Bull bij "Ei") omdat
+  //          Open Food Facts' zoek-API breed matcht zonder relevantiesortering; nu filteren
+  //          en sorteren we zelf op echte naam-/merkrelevantie, en worden HTML-entities in
+  //          merknamen (zoals &quot;) correct gedecodeerd
+  const APP_VERSION = '2.4.2';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -363,6 +367,39 @@
     setTimeout(() => productSearchInput.focus(), 50);
   }
 
+  // Open Food Facts' search_simple=1 matcht op een intern, meertalig veld (categorieën,
+  // generieke naam e.d.), niet alleen op productnaam/merk — zonder woordgrenzen en zonder
+  // relevantiesortering. Daardoor kwam bijv. "Ei" toevallig uit bij Red Bull-producten.
+  // We filteren daarom zelf op echte relevantie (naam/merk bevat de zoekterm) en sorteren
+  // treffers waarbij de naam met de term begint of hem als los woord bevat naar boven.
+  const entityDecodeEl = document.createElement('textarea');
+  function decodeEntities(s) {
+    if (!s) return s;
+    entityDecodeEl.innerHTML = s;
+    return entityDecodeEl.value;
+  }
+  function normalizeSearch(s) {
+    return decodeEntities(String(s || ''))
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, ''); // diakrieten weg (café -> cafe)
+  }
+  function cleanProduct(p) {
+    return Object.assign({}, p, {
+      product_name: decodeEntities(p.product_name || ''),
+      brands: decodeEntities(p.brands || '')
+    });
+  }
+  function relevanceScore(p, normTerm) {
+    const name = normalizeSearch(p.product_name);
+    const brand = normalizeSearch(p.brands);
+    const wordBoundary = new RegExp('(^|[^a-z0-9])' + normTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    if (name.startsWith(normTerm)) return 4;
+    if (wordBoundary.test(name)) return 3;
+    if (name.includes(normTerm)) return 2;
+    if (wordBoundary.test(brand) || brand.includes(normTerm)) return 1;
+    return 0;
+  }
+
   function renderProductSearchResults(products) {
     productSearchResultsEl.replaceChildren(...products.map(p => {
       const per100 = per100Nutrients(p.nutriments);
@@ -381,11 +418,19 @@
     setProductSearchStatus('Zoeken…', true);
     try {
       const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + encodeURIComponent(term) +
-        '&search_simple=1&action=process&json=1&page_size=20' +
+        '&search_simple=1&action=process&json=1&page_size=40' +
         '&fields=code,product_name,brands,nutriments,ingredients_text_nl,ingredients_text,ingredients_text_en,image_front_small_url';
       const r = await fetch(url, { signal: productSearchAbort.signal });
       const j = await r.json();
-      const products = (j.products || []).filter(p => p.product_name);
+      const normTerm = normalizeSearch(term);
+      const products = (j.products || [])
+        .filter(p => p.product_name)
+        .map(cleanProduct)
+        .map(p => ({ p, score: relevanceScore(p, normTerm) }))
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 20)
+        .map(x => x.p);
       renderProductSearchResults(products);
       setProductSearchStatus(products.length ? '' : 'Niets gevonden voor “' + term + '”. Probeer een andere zoekterm, of scan de barcode.', !products.length);
     } catch (e) {

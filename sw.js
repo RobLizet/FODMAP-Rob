@@ -1,6 +1,6 @@
 /* Service worker: app-shell offline beschikbaar (stale-while-revalidate).
  * Verhoog CACHE bij een update als je wilt dat iedereen direct de nieuwe versie krijgt. */
-const CACHE = 'fodmap-scanner-v18';
+const CACHE = 'fodmap-scanner-v19';
 const ASSETS = [
   './', './index.html', './app.js', './fodmap.js', './manifest.json',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png'
