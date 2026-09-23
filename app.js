@@ -28,7 +28,13 @@
   //          Open Food Facts' zoek-API breed matcht zonder relevantiesortering; nu filteren
   //          en sorteren we zelf op echte naam-/merkrelevantie, en worden HTML-entities in
   //          merknamen (zoals &quot;) correct gedecodeerd
-  const APP_VERSION = '2.4.2';
+  //  2.4.3 - Fix: bij meerdere zoekwoorden (bijv. "Dolce Gusto Grande") moet nu elk los woord
+  //          matchen in plaats van de hele term als één stuk tekst — zo komen alleen echte
+  //          treffers (de koffiecapsules) mee, niet elk product met één matchend woord (pizza's
+  //          met "Dolce"). Bij "Ei" kwamen ook nog Duitse "Eis"-producten (ijs) mee omdat de
+  //          woordgrens-check alleen het begin van het woord bekeek; korte zoekwoorden
+  //          (t/m 3 tekens) matchen nu alleen als heel woord in naam of merk
+  const APP_VERSION = '2.4.3';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -389,15 +395,32 @@
       brands: decodeEntities(p.brands || '')
     });
   }
-  function relevanceScore(p, normTerm) {
+  // Elk woord van de zoekterm moet ergens in naam+merk voorkomen (zoals een "en"-zoekopdracht),
+  // anders wordt het product uitgesloten. Zo blijft "Dolce Gusto Grande" alleen de capsules
+  // vinden (mist "gusto" bij een pizza), en "Ei" alleen echte eiproducten (mist "eis" als heel
+  // woord). Korte woorden (t/m 3 tekens) moeten een heel woord zijn — te dubbelzinnig als los
+  // prefix ("ei" zit ook in "eis", "eiland", "einde"). Langere woorden mogen ook een prefix of
+  // los onderdeel van een woord zijn, zodat zoeken terwijl je typt blijft werken.
+  function relevanceScore(p, tokens) {
     const name = normalizeSearch(p.product_name);
     const brand = normalizeSearch(p.brands);
-    const wordBoundary = new RegExp('(^|[^a-z0-9])' + normTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    if (name.startsWith(normTerm)) return 4;
-    if (wordBoundary.test(name)) return 3;
-    if (name.includes(normTerm)) return 2;
-    if (wordBoundary.test(brand) || brand.includes(normTerm)) return 1;
-    return 0;
+    const hay = name + ' ' + brand;
+    let total = 0;
+    for (const tok of tokens) {
+      const esc = tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const exactWord = new RegExp('(^|[^a-z0-9])' + esc + '($|[^a-z0-9])');
+      const strict = tok.length <= 3;
+      let s = 0;
+      if (exactWord.test(hay)) s = 3;
+      else if (!strict) {
+        const wordStart = new RegExp('(^|[^a-z0-9])' + esc);
+        if (wordStart.test(hay)) s = 2;
+        else if (hay.includes(tok)) s = 1;
+      }
+      if (s === 0) return 0; // dit woord komt nergens voor: geen match
+      total += s + (name.startsWith(tok) ? 1 : 0);
+    }
+    return total;
   }
 
   function renderProductSearchResults(products) {
@@ -423,10 +446,12 @@
       const r = await fetch(url, { signal: productSearchAbort.signal });
       const j = await r.json();
       const normTerm = normalizeSearch(term);
+      const tokens = normTerm.split(/\s+/).filter(t => t.length >= 2);
+      const searchTokens = tokens.length ? tokens : [normTerm];
       const products = (j.products || [])
         .filter(p => p.product_name)
         .map(cleanProduct)
-        .map(p => ({ p, score: relevanceScore(p, normTerm) }))
+        .map(p => ({ p, score: relevanceScore(p, searchTokens) }))
         .filter(x => x.score > 0)
         .sort((a, b) => b.score - a.score)
         .slice(0, 20)
