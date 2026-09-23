@@ -36,7 +36,9 @@
   //  2.7.2 - Merkproducten krijgen ook huishoudmaten (glas, beker, schaaltje, plak, snee…) op basis
   //          van productnaam/categorie; nietszeggende "portie (100 gram)" van Open Food Facts vervalt
   //  2.7.3 - Signatuur "© 2026 Made by Rob Borghouts" in sierletters onderaan de app en in Instellingen
-  const APP_VERSION = '2.7.3';
+  //  2.7.4 - Item of hele dag van gisteren (of een andere eerdere dag) met één tik naar
+  //          vandaag kopiëren, in het dagboek
+  const APP_VERSION = '2.7.4';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -853,6 +855,21 @@
   }
   function fmtG(n) { return n.toLocaleString('nl-NL', { maximumFractionDigits: 1 }); }
 
+  // Kopieert één dagboekitem naar vandaag (nieuwe timestamp, zelfde maaltijd/hoeveelheid)
+  function copyItemToToday(it) {
+    addDiaryItem({
+      text: it.text, verdict: it.verdict, source: it.source, brand: it.brand, meal: it.meal,
+      qty: it.qty, protein: it.protein, kcal: it.kcal, unit: it.unit, unitGrams: it.unitGrams,
+      count: it.count, per100: it.per100, portions: it.portions
+    });
+  }
+  function copyDayToToday(key) {
+    const day = diary[key];
+    if (!day || !day.items.length) return;
+    if (!window.confirm('Alle ' + day.items.length + ' items van ' + dayHeading(key).replace(/^./, c => c.toLowerCase()) + ' toevoegen aan vandaag?')) return;
+    day.items.forEach(it => copyItemToToday(it));
+  }
+
   function addDiaryItem(entry) {
     const key = todayKey();
     if (!diary[key]) diary[key] = { items: [], note: '' };
@@ -1261,6 +1278,7 @@
             h('div', { class: 'entry-name', text: it.text }),
             meta ? h('div', { class: 'entry-meta', text: meta }) : null),
           it.protein != null ? h('span', { class: 'entry-prot', text: fmtG(it.protein) + ' g' }) : h('span', { class: 'entry-prot muted', text: '–' }),
+          !isToday ? h('button', { class: 'x', 'aria-label': 'Kopieer naar vandaag', title: 'Kopieer naar vandaag', onclick: e => { e.stopPropagation(); copyItemToToday(it); } }, '↺') : null,
           h('button', { class: 'x', 'aria-label': 'Verwijderen', onclick: () => { day.items.splice(day.items.indexOf(it), 1); store.set('diary', diary); renderDiary(); } }, '×'));
       }
 
@@ -1276,7 +1294,9 @@
         : h('p', { class: 'muted small', style: 'margin-top:8px' }, 'Nog geen items voor deze dag.');
 
       return h('section', { class: 'card day' + (isToday ? ' today' : '') },
-        h('h3', { class: 'day-title', text: dayHeading(key) }),
+        h('div', { class: 'day-head' },
+          h('h3', { class: 'day-title', text: dayHeading(key) }),
+          (!isToday && day.items.length) ? h('button', { class: 'linkbtn small', type: 'button', onclick: () => copyDayToToday(key) }, '↺ Kopieer dag naar vandaag') : null),
         goalBlock,
         itemsBlock,
         noteArea,
