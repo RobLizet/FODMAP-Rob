@@ -15,7 +15,9 @@
   //  1.9.0 - Scherpte-check bij foto van etiket (waarschuwt vóór OCR bij een wazige foto) + lichte verscherping
   //  1.9.1 - Fix: verscherpingsfilter versterkte camerakorrel en maakte tekst juist onduidelijker;
   //          vervangen door hogere resolutie + betere OCR-paginamodus voor lopende tekst
-  const APP_VERSION = '1.9.1';
+  //  2.0.0 - Dagboek houdt nu ook eiwit en calorieën bij (automatisch bij barcode-scan, anders
+  //          handmatig), gegroepeerd per maaltijd (Ontbijt/Lunch/Diner/Snack) met dagtotalen
+  const APP_VERSION = '2.0.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -140,9 +142,7 @@
     if (data.text) {
       const diaryBtn = h('button', {
         class: 'btn ghost', type: 'button', onclick: () => {
-          addDiaryItem(data.title || 'Product', verdictKey, data.source || (data.barcode ? 'Scan' : 'Handmatig'));
-          diaryBtn.textContent = 'Toegevoegd aan dagboek ✓';
-          diaryBtn.disabled = true;
+          openDiaryAddDialog(data.title || 'Product', verdictKey, data.source || (data.barcode ? 'Scan' : 'Handmatig'), data.per100 || null);
         }
       }, 'Voeg toe aan dagboek');
       acts.push(diaryBtn);
@@ -170,7 +170,7 @@
     history = history.filter(x => key(x) !== key(data));
     history.unshift({
       title: data.title || 'Product', brand: data.brand || '', image: data.image || '',
-      barcode: data.barcode || '', text: data.text, verdict, t: Date.now()
+      barcode: data.barcode || '', text: data.text, verdict, t: Date.now(), per100: data.per100 || null
     });
     history = history.slice(0, 40);
     store.set('history', history);
@@ -268,6 +268,16 @@
 
   const rescanBtn = () => h('button', { class: 'btn', onclick: () => { $('#codeInput').value = ''; startCamera(); } }, 'Volgend product scannen');
 
+  // Haalt eiwit en energie per 100g uit de Open Food Facts-nutriments, indien beschikbaar.
+  function per100Nutrients(nutr) {
+    if (!nutr) return null;
+    const protein = typeof nutr.proteins_100g === 'number' ? nutr.proteins_100g : null;
+    let kcal = typeof nutr['energy-kcal_100g'] === 'number' ? nutr['energy-kcal_100g'] : null;
+    if (kcal == null && typeof nutr.energy_100g === 'number') kcal = nutr.energy_100g / 4.184; // kJ -> kcal
+    if (protein == null && kcal == null) return null;
+    return { protein, kcal };
+  }
+
   async function lookup(raw) {
     const code = String(raw).replace(/\D/g, '');
     const out = $('#scanResult');
@@ -281,7 +291,7 @@
       const ctrl = new AbortController();
       const to = setTimeout(() => ctrl.abort(), 12000);
       const r = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code +
-        '.json?fields=code,product_name,brands,image_front_small_url,ingredients_text,ingredients_text_nl,ingredients_text_en',
+        '.json?fields=code,product_name,brands,image_front_small_url,ingredients_text,ingredients_text_nl,ingredients_text_en,nutriments',
         { signal: ctrl.signal });
       clearTimeout(to);
       const j = await r.json();
@@ -299,7 +309,8 @@
       const data = {
         title: p.product_name || 'Onbekend product', brand: p.brands || '',
         image: p.image_front_small_url || '', barcode: code,
-        text: p.ingredients_text_nl || p.ingredients_text || p.ingredients_text_en || '', source: 'Open Food Facts'
+        text: p.ingredients_text_nl || p.ingredients_text || p.ingredients_text_en || '', source: 'Open Food Facts',
+        per100: per100Nutrients(p.nutriments)
       };
       setMsg('');
       show(out, data, true, res => [
@@ -554,13 +565,108 @@
     return label;
   }
 
-  function addDiaryItem(text, verdict, source) {
+  const MEAL_LABELS = { ontbijt: 'Ontbijt', lunch: 'Lunch', diner: 'Diner', snack: 'Snack' };
+  const MEAL_ORDER = ['ontbijt', 'lunch', 'diner', 'snack'];
+  function guessMeal() {
+    const hr = new Date().getHours();
+    if (hr < 11) return 'ontbijt';
+    if (hr < 15) return 'lunch';
+    if (hr < 21) return 'diner';
+    return 'snack';
+  }
+  function fmtG(n) { return n.toLocaleString('nl-NL', { maximumFractionDigits: 1 }); }
+
+  function addDiaryItem(entry) {
     const key = todayKey();
     if (!diary[key]) diary[key] = { items: [], note: '' };
-    diary[key].items.push({ text: (text || '').trim() || 'Item', verdict: verdict || '', source: source || 'Handmatig', t: Date.now() });
+    diary[key].items.push({
+      text: (entry.text || '').trim() || 'Item',
+      verdict: entry.verdict || '',
+      source: entry.source || 'Handmatig',
+      meal: entry.meal || 'snack',
+      qty: typeof entry.qty === 'number' && !isNaN(entry.qty) ? entry.qty : null,
+      protein: typeof entry.protein === 'number' && !isNaN(entry.protein) ? entry.protein : null,
+      kcal: typeof entry.kcal === 'number' && !isNaN(entry.kcal) ? entry.kcal : null,
+      t: Date.now()
+    });
     store.set('diary', diary);
     renderDiary();
   }
+
+  // ---------- toevoegen-aan-dagboek dialoog (maaltijd, hoeveelheid, eiwit/kcal) ----------
+  const diaryAddDialog = $('#diaryAddDialog');
+  const diaryQtyEl = $('#diaryQty');
+  const diaryAutoNoteEl = $('#diaryAutoNote');
+  const diaryManualBox = $('#diaryManualNutrients');
+  const diaryProteinInput = $('#diaryProteinInput');
+  const diaryKcalInput = $('#diaryKcalInput');
+  let diaryAddCtx = null; // { text, verdict, source, per100 }
+
+  function selectMealChip(meal) {
+    $$('#diaryMealChips .chip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.meal === meal)));
+  }
+  function getSelectedMeal() {
+    const el = $('#diaryMealChips .chip[aria-pressed=true]');
+    return el ? el.dataset.meal : 'snack';
+  }
+  $$('#diaryMealChips .chip').forEach(c => c.addEventListener('click', () => selectMealChip(c.dataset.meal)));
+
+  function updateDiaryAutoNote() {
+    if (!diaryAddCtx || !diaryAddCtx.per100) return;
+    const qty = parseFloat(diaryQtyEl.value);
+    const p100 = diaryAddCtx.per100;
+    if (!qty || qty <= 0) { diaryAutoNoteEl.textContent = 'Vul een hoeveelheid in om eiwit/energie te berekenen.'; return; }
+    const parts = [];
+    if (p100.protein != null) parts.push(fmtG(p100.protein * qty / 100) + ' g eiwit');
+    if (p100.kcal != null) parts.push(Math.round(p100.kcal * qty / 100) + ' kcal');
+    diaryAutoNoteEl.textContent = parts.length
+      ? '≈ ' + parts.join(', ') + ' bij ' + qty + ' g (bron: Open Food Facts, per 100 g).'
+      : 'Geen voedingswaarden bekend voor dit product bij Open Food Facts.';
+  }
+  diaryQtyEl.addEventListener('input', updateDiaryAutoNote);
+
+  function openDiaryAddDialog(text, verdict, source, per100) {
+    diaryAddCtx = { text, verdict, source, per100: per100 || null };
+    $('#diaryAddProduct').textContent = text;
+    selectMealChip(guessMeal());
+    diaryQtyEl.value = per100 ? '100' : '';
+    diaryProteinInput.value = '';
+    diaryKcalInput.value = '';
+    if (per100) {
+      diaryManualBox.hidden = true;
+      diaryAutoNoteEl.hidden = false;
+      updateDiaryAutoNote();
+    } else {
+      diaryManualBox.hidden = false;
+      diaryAutoNoteEl.hidden = true;
+    }
+    diaryAddDialog.showModal();
+    setTimeout(() => diaryQtyEl.focus(), 50);
+  }
+
+  $('#diaryAddClose').addEventListener('click', () => diaryAddDialog.close());
+  $('#diaryAddConfirm').addEventListener('click', () => {
+    if (!diaryAddCtx) return;
+    const qty = parseFloat(diaryQtyEl.value);
+    let protein = null, kcal = null;
+    if (diaryAddCtx.per100) {
+      if (qty > 0) {
+        if (diaryAddCtx.per100.protein != null) protein = Math.round(diaryAddCtx.per100.protein * qty / 100 * 10) / 10;
+        if (diaryAddCtx.per100.kcal != null) kcal = Math.round(diaryAddCtx.per100.kcal * qty / 100);
+      }
+    } else {
+      const pv = parseFloat(diaryProteinInput.value);
+      const kv = parseFloat(diaryKcalInput.value);
+      if (!isNaN(pv)) protein = pv;
+      if (!isNaN(kv)) kcal = Math.round(kv);
+    }
+    addDiaryItem({
+      text: diaryAddCtx.text, verdict: diaryAddCtx.verdict, source: diaryAddCtx.source,
+      meal: getSelectedMeal(), qty: qty > 0 ? qty : null, protein, kcal
+    });
+    diaryAddDialog.close();
+    $('#diaryInput').value = '';
+  });
 
   function setDiaryNote(key, note) {
     if (!diary[key]) diary[key] = { items: [], note: '' };
@@ -583,19 +689,49 @@
       });
       noteArea.value = day.note || '';
 
-      const itemsList = day.items.length
-        ? h('ul', { class: 'list' }, day.items.map((it, i) => h('li', null,
-            h('span', { class: 'dot ' + (LV[it.verdict] || 'unsure'), style: 'margin-top:6px' }),
-            h('div', { class: 'grow' },
-              h('b', { text: it.text }),
-              h('div', { class: 'muted small', text: [VERDICT[it.verdict] ? VERDICT[it.verdict].title : 'Niet gecontroleerd', it.source, new Date(it.t).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · ') })),
-            h('button', { class: 'x', 'aria-label': 'Verwijderen', onclick: () => { day.items.splice(i, 1); store.set('diary', diary); renderDiary(); } }, '×'))))
+      let totalProtein = 0, totalKcal = 0, hasProtein = false, hasKcal = false;
+      day.items.forEach(it => {
+        if (typeof it.protein === 'number') { totalProtein += it.protein; hasProtein = true; }
+        if (typeof it.kcal === 'number') { totalKcal += it.kcal; hasKcal = true; }
+      });
+      const totalsRow = (hasProtein || hasKcal) ? h('div', { class: 'row', style: 'gap:20px;margin:8px 0 4px' },
+        hasProtein ? h('div', null, h('div', { class: 'muted small', text: 'Eiwit' }), h('strong', { style: 'font-size:19px', text: fmtG(totalProtein) + ' g' })) : null,
+        hasKcal ? h('div', null, h('div', { class: 'muted small', text: 'Energie' }), h('strong', { style: 'font-size:19px', text: Math.round(totalKcal) + ' kcal' })) : null
+      ) : null;
+
+      function itemRow(it, i) {
+        return h('li', null,
+          h('span', { class: 'dot ' + (LV[it.verdict] || 'unsure'), style: 'margin-top:6px' }),
+          h('div', { class: 'grow' },
+            h('b', { text: it.text }),
+            h('div', {
+              class: 'muted small', text: [
+                VERDICT[it.verdict] ? VERDICT[it.verdict].title : 'Niet gecontroleerd',
+                it.qty != null ? it.qty + ' g' : null,
+                it.protein != null ? fmtG(it.protein) + ' g eiwit' : null,
+                it.kcal != null ? Math.round(it.kcal) + ' kcal' : null,
+                it.source,
+                new Date(it.t).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+              ].filter(Boolean).join(' · ')
+            })),
+          h('button', { class: 'x', 'aria-label': 'Verwijderen', onclick: () => { day.items.splice(day.items.indexOf(it), 1); store.set('diary', diary); renderDiary(); } }, '×'));
+      }
+
+      const itemsBlock = day.items.length
+        ? h('div', null, MEAL_ORDER.map(meal => {
+            const items = day.items.filter(it => (it.meal || 'snack') === meal);
+            if (!items.length) return null;
+            return h('div', { style: 'margin-top:12px' },
+              h('h3', { text: MEAL_LABELS[meal] }),
+              h('ul', { class: 'list' }, items.map(it => itemRow(it))));
+          }))
         : h('p', { class: 'muted small', style: 'margin-top:8px' }, 'Nog geen items voor deze dag.');
 
       return h('section', { class: 'card' },
         h('div', { class: 'row', style: 'align-items:center;margin-bottom:2px' },
           h('h3', { style: 'font-size:15px;text-transform:none;letter-spacing:0;color:inherit;margin:0', text: dayHeading(key) })),
-        itemsList,
+        totalsRow,
+        itemsBlock,
         noteArea);
     }));
   }
@@ -603,8 +739,7 @@
   $('#diaryAdd').addEventListener('click', () => {
     const text = $('#diaryInput').value.trim();
     if (!text) return;
-    addDiaryItem(text, '', 'Handmatig');
-    $('#diaryInput').value = '';
+    openDiaryAddDialog(text, '', 'Handmatig', null);
   });
   $('#diaryToText').addEventListener('click', () => {
     const text = $('#diaryInput').value.trim();

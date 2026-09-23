@@ -218,7 +218,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
   <section id="view-diary" class="view">
     <div class="card">
       <h2 style="font-size:18px">Wat heb je gegeten?</h2>
-      <p class="msg">Scan een barcode of maak een foto van het etiket om het product te checken én meteen aan je dagboek toe te voegen — of vul hieronder handmatig iets in.</p>
+      <p class="msg">Scan een barcode of maak een foto van het etiket om het product te checken én meteen aan je dagboek toe te voegen (inclusief eiwit en calorieën) — of vul hieronder handmatig iets in.</p>
       <div class="actions" style="margin-bottom:10px">
         <button id="diaryScan" class="btn">Barcode scannen</button>
         <button id="diaryPhoto" class="btn ghost">Foto van etiket</button>
@@ -264,6 +264,33 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     <button id="aiSend" class="btn" type="submit">Stuur</button>
   </form>
   <p class="disc">AI-antwoorden zijn indicatief, geen medisch advies.</p>
+</dialog>
+
+<dialog id="diaryAddDialog">
+  <div class="ai-head">
+    <h2>Toevoegen aan dagboek</h2>
+    <button id="diaryAddClose" type="button" aria-label="Sluiten">×</button>
+  </div>
+  <p id="diaryAddProduct" class="muted small" style="margin-bottom:10px"></p>
+  <label class="lbl">Maaltijd</label>
+  <div class="chips" id="diaryMealChips">
+    <button type="button" class="chip" data-meal="ontbijt">Ontbijt</button>
+    <button type="button" class="chip" data-meal="lunch">Lunch</button>
+    <button type="button" class="chip" data-meal="diner">Diner</button>
+    <button type="button" class="chip" data-meal="snack">Snack</button>
+  </div>
+  <label class="lbl" for="diaryQty">Hoeveelheid (gram)</label>
+  <input id="diaryQty" type="number" inputmode="decimal" min="0" step="1" placeholder="bijv. 150">
+  <p id="diaryAutoNote" class="msg" hidden></p>
+  <div id="diaryManualNutrients" hidden>
+    <label class="lbl" for="diaryProteinInput">Eiwit (g) — schatting voor deze hoeveelheid</label>
+    <input id="diaryProteinInput" type="number" inputmode="decimal" step="0.1" placeholder="optioneel">
+    <label class="lbl" for="diaryKcalInput">Energie (kcal) — schatting voor deze hoeveelheid</label>
+    <input id="diaryKcalInput" type="number" inputmode="decimal" step="1" placeholder="optioneel">
+  </div>
+  <div class="actions" style="margin-top:14px">
+    <button id="diaryAddConfirm" class="btn" type="button">Toevoegen</button>
+  </div>
 </dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
