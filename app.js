@@ -17,7 +17,8 @@
   //          vervangen door hogere resolutie + betere OCR-paginamodus voor lopende tekst
   //  2.0.0 - Dagboek houdt nu ook eiwit en calorieën bij (automatisch bij barcode-scan, anders
   //          handmatig), gegroepeerd per maaltijd (Ontbijt/Lunch/Diner/Snack) met dagtotalen
-  const APP_VERSION = '2.0.0';
+  //  2.1.0 - Product zoeken op naam (Open Food Facts), net als handmatig een barcode intypen
+  const APP_VERSION = '2.1.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -334,6 +335,92 @@
   $('#camStop').addEventListener('click', () => { stopCamera(); setMsg('Scan de barcode op de verpakking, of typ hem hieronder in.'); });
   $('#codeForm').addEventListener('submit', e => { e.preventDefault(); stopCamera(); lookup($('#codeInput').value); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) stopCamera(); });
+
+  // ---------- product zoeken op naam (Open Food Facts) ----------
+  const productSearchDialog = $('#productSearchDialog');
+  const productSearchInput = $('#productSearchInput');
+  const productSearchResultsEl = $('#productSearchResults');
+  let productSearchAbort = null;
+  let productSearchTimer = null;
+
+  function setProductSearchStatus(t, show) {
+    const el = $('#productSearchStatus');
+    el.textContent = t;
+    el.hidden = !show;
+  }
+
+  function openProductSearch() {
+    productSearchInput.value = '';
+    productSearchResultsEl.replaceChildren();
+    setProductSearchStatus('', false);
+    productSearchDialog.showModal();
+    setTimeout(() => productSearchInput.focus(), 50);
+  }
+
+  function renderProductSearchResults(products) {
+    productSearchResultsEl.replaceChildren(...products.map(p => {
+      const per100 = per100Nutrients(p.nutriments);
+      const meta = [p.brands || ''];
+      if (per100 && per100.protein != null) meta.push(fmtG(per100.protein) + ' g eiwit /100g');
+      if (per100 && per100.kcal != null) meta.push(Math.round(per100.kcal) + ' kcal /100g');
+      return h('li', null, h('button', { class: 'plain grow', type: 'button', onclick: () => pickSearchResult(p) },
+        h('div', { class: 'psr-name', text: p.product_name }),
+        h('div', { class: 'psr-meta', text: meta.filter(Boolean).join(' · ') || 'Geen merk- of voedingsinfo bekend' })));
+    }));
+  }
+
+  async function runProductSearch(term) {
+    if (productSearchAbort) productSearchAbort.abort();
+    productSearchAbort = new AbortController();
+    setProductSearchStatus('Zoeken…', true);
+    try {
+      const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + encodeURIComponent(term) +
+        '&search_simple=1&action=process&json=1&page_size=20' +
+        '&fields=code,product_name,brands,nutriments,ingredients_text_nl,ingredients_text,ingredients_text_en,image_front_small_url';
+      const r = await fetch(url, { signal: productSearchAbort.signal });
+      const j = await r.json();
+      const products = (j.products || []).filter(p => p.product_name);
+      renderProductSearchResults(products);
+      setProductSearchStatus(products.length ? '' : 'Niets gevonden voor “' + term + '”. Probeer een andere zoekterm, of scan de barcode.', !products.length);
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      productSearchResultsEl.replaceChildren();
+      setProductSearchStatus('Zoeken mislukt. Controleer je internetverbinding en probeer opnieuw.', true);
+    }
+  }
+
+  function scheduleProductSearch(term) {
+    clearTimeout(productSearchTimer);
+    const q = term.trim();
+    if (q.length < 2) {
+      if (productSearchAbort) productSearchAbort.abort();
+      productSearchResultsEl.replaceChildren();
+      setProductSearchStatus('', false);
+      return;
+    }
+    productSearchTimer = setTimeout(() => runProductSearch(q), 450);
+  }
+
+  function pickSearchResult(p) {
+    const data = {
+      title: p.product_name || 'Onbekend product', brand: p.brands || '',
+      image: p.image_front_small_url || '', barcode: p.code || '',
+      text: p.ingredients_text_nl || p.ingredients_text || p.ingredients_text_en || '',
+      source: 'Open Food Facts', per100: per100Nutrients(p.nutriments)
+    };
+    productSearchDialog.close();
+    showView('scan');
+    $('#codeInput').value = data.barcode || '';
+    setMsg('');
+    show($('#scanResult'), data, true, res => [
+      res.verdict === 'unknown' ? h('button', { class: 'btn', onclick: () => goToText(data.barcode, data.title) }, 'Ingrediënten invoeren') : null,
+      rescanBtn()
+    ]);
+  }
+
+  productSearchInput.addEventListener('input', e => scheduleProductSearch(e.target.value));
+  $('#productSearchOpen').addEventListener('click', openProductSearch);
+  $('#productSearchClose').addEventListener('click', () => productSearchDialog.close());
 
   // ---------- tekst ----------
   $('#txtGo').addEventListener('click', () => {
@@ -764,6 +851,7 @@
     showView('text');
     ocrInput.click();
   });
+  $('#diarySearch').addEventListener('click', openProductSearch);
 
   // ---------- AI-assistent ----------
   const aiDialog = $('#aiChatDialog');

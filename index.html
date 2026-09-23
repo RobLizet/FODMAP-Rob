@@ -125,6 +125,13 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .ai-inputrow{display:flex;gap:8px;margin-top:10px;flex:none}
 .ai-inputrow textarea{flex:1;min-height:42px;max-height:110px;resize:none;padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:var(--bg)}
 .ai-inputrow button{flex:none;border-radius:14px;padding:0 18px}
+
+/* product zoeken */
+#productSearchDialog[open]{display:flex;flex-direction:column;max-height:80dvh;height:min(560px,80dvh);padding:14px;margin-top:5dvh;margin-bottom:auto}
+#productSearchResults{flex:1;overflow-y:auto;margin:6px 0 0;-webkit-overflow-scrolling:touch}
+#productSearchResults li{padding:10px 4px}
+.psr-name{font-weight:600}
+.psr-meta{color:var(--muted);font-size:13px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -154,6 +161,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
         <input id="codeInput" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Barcode, bijv. 8710400123456" aria-label="Barcode">
         <button class="btn" style="flex:0 0 auto">Zoek</button>
       </form>
+      <button id="productSearchOpen" type="button" class="btn ghost block" style="margin-top:10px">Product zoeken op naam</button>
     </div>
     <div id="scanResult"></div>
   </section>
@@ -222,6 +230,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
       <div class="actions" style="margin-bottom:10px">
         <button id="diaryScan" class="btn">Barcode scannen</button>
         <button id="diaryPhoto" class="btn ghost">Foto van etiket</button>
+        <button id="diarySearch" class="btn ghost">Product zoeken</button>
       </div>
       <textarea id="diaryInput" placeholder="Of typ hier direct wat je hebt gegeten, bijv. tosti met kaas, glas cola" style="min-height:70px"></textarea>
       <div class="actions">
@@ -291,6 +300,16 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
   <div class="actions" style="margin-top:14px">
     <button id="diaryAddConfirm" class="btn" type="button">Toevoegen</button>
   </div>
+</dialog>
+
+<dialog id="productSearchDialog">
+  <div class="ai-head">
+    <h2>Product zoeken</h2>
+    <button id="productSearchClose" type="button" aria-label="Sluiten">×</button>
+  </div>
+  <input id="productSearchInput" type="search" placeholder="Zoek op productnaam, bijv. kipfilet" aria-label="Product zoeken">
+  <p id="productSearchStatus" class="msg" hidden></p>
+  <ul id="productSearchResults" class="list"></ul>
 </dialog>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
