@@ -38,7 +38,10 @@
   //  2.7.3 - Signatuur "© 2026 Made by Rob Borghouts" in sierletters onderaan de app en in Instellingen
   //  2.7.4 - Item of hele dag van gisteren (of een andere eerdere dag) met één tik naar
   //          vandaag kopiëren, in het dagboek
-  const APP_VERSION = '2.7.4';
+  //  2.7.5 - Foto van etiket: kan nu ook een bestaande foto uit de galerij kiezen, niet alleen
+  //          de camera direct openen; barcode niet gevonden geeft ook een directe "Foto van
+  //          etiket"-knop
+  const APP_VERSION = '2.7.5';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -227,6 +230,17 @@
     $('#txtIngr').focus();
   }
 
+  // Barcode niet gevonden -> meteen naar "foto van etiket" met de barcode alvast onthouden
+  function goToPhoto(barcode, title) {
+    pendingBarcode = barcode || '';
+    $('#txtName').value = title || '';
+    $('#txtIngr').value = '';
+    $('#txtHint').textContent = 'Maak een foto van het etiket, of kies er een uit je galerij — de tekst verschijnt hieronder om te controleren.';
+    $('#textResult').replaceChildren();
+    showView('text');
+    ocrInput.click();
+  }
+
   // ---------- scannen ----------
   const cam = $('#cam');
   let stream = null, detector = null, timer = null, scanning = false;
@@ -376,9 +390,10 @@
         setMsg('');
         out.replaceChildren(h('div', { class: 'card' },
           h('h2', { style: 'font-size:18px', text: 'Product niet gevonden' }),
-          h('p', { class: 'muted small', style: 'margin:6px 0 12px', text: 'Barcode ' + code + ' staat niet in Open Food Facts. Je kunt de ingrediëntenlijst zelf invoeren.' }),
+          h('p', { class: 'muted small', style: 'margin:6px 0 12px', text: 'Barcode ' + code + ' staat niet in Open Food Facts (dat gebeurt vaak bij Nederlandse producten). Maak een foto van het etiket of voer de ingrediëntenlijst zelf in.' }),
           h('div', { class: 'actions' },
-            h('button', { class: 'btn', onclick: () => goToText(code, '') }, 'Ingrediënten invoeren'),
+            h('button', { class: 'btn', onclick: () => goToPhoto(code) }, 'Foto van etiket'),
+            h('button', { class: 'btn ghost', onclick: () => goToText(code, '') }, 'Ingrediënten invoeren'),
             rescanBtn())));
         return;
       }
