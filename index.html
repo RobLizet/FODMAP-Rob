@@ -5,53 +5,94 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>FODMAP Scanner</title>
 <meta name="description" content="Scan een barcode of plak een ingrediëntenlijst en zie direct welke FODMAPs erin zitten.">
-<meta name="theme-color" content="#4f8fc7">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#18222c" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root{
-  --bg:#eef5fb;--card:#ffffff;--fg:#233242;--muted:#6b849a;--line:#d3e3ee;--accent:#4f8fc7;
-  --high:#c15f4e;--mod:#b8863c;--low:#4f9d78;--unk:#7c8fa0;
-  --high-bg:#f8e6e0;--mod-bg:#f6efd6;--low-bg:#e2f2e8;--unk-bg:#e5edf5;
+  --bg:#f3f5f8;--card:#ffffff;--fg:#17212b;--muted:#667789;--line:#e2e7ed;--line-strong:#cfd7e0;
+  --accent:#2563a8;--accent-hover:#1e528c;--accent-soft:#e9f0f9;--accent-fg:#ffffff;
+  --high:#c24a3a;--mod:#b27a1f;--low:#2f8a5f;--unk:#7a8a9a;
+  --high-bg:#fbeae7;--mod-bg:#fbf2df;--low-bg:#e5f4ec;--unk-bg:#eef2f6;
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.04);
+  --shadow-lg:0 12px 32px rgba(16,24,40,.18);
+  --r:16px;--r-sm:12px;
 }
 @media (prefers-color-scheme:dark){
-  :root{--bg:#131d27;--card:#1c2b38;--fg:#e7f1f8;--muted:#9db3c4;--line:#2c4051;--accent:#7fb4de;
-    --high:#e28575;--mod:#e0b463;--low:#8fca9f;
-    --high-bg:#3f2820;--mod-bg:#3a3020;--low-bg:#1f3226;--unk-bg:#24333f;}
+  :root{--bg:#0e141a;--card:#172029;--fg:#e6edf3;--muted:#93a3b3;--line:#243240;--line-strong:#314252;
+    --accent:#6fa8e8;--accent-hover:#8bbbf0;--accent-soft:#1a2b3d;--accent-fg:#0e141a;
+    --high:#ec8a78;--mod:#e5b45c;--low:#6fc79a;--unk:#8b9aa9;
+    --high-bg:#3a211c;--mod-bg:#382c17;--low-bg:#17301f;--unk-bg:#1f2b36;
+    --shadow:0 1px 2px rgba(0,0,0,.3);--shadow-lg:0 12px 32px rgba(0,0,0,.5);}
 }
-*{box-sizing:border-box}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 html,body{margin:0}
-body{background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  min-height:100dvh;padding-bottom:calc(70px + env(safe-area-inset-bottom))}
+body{background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  -webkit-font-smoothing:antialiased;min-height:100dvh;padding-bottom:calc(76px + env(safe-area-inset-bottom))}
 button,input,textarea{font:inherit;color:inherit}
+button{-webkit-user-select:none;user-select:none}
 h1,h2,h3,p{margin:0}
-.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;
-  padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--accent);color:#fff}
-.top h1{font-size:18px;font-weight:700}
-.top .btns{display:flex;gap:8px}
-.top button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:10px;padding:7px 12px;cursor:pointer}
-.banner{background:var(--mod-bg);color:var(--mod);padding:8px 16px;font-size:14px}
-main{max-width:640px;margin:0 auto;padding:14px 14px 0}
+svg{flex:none}
+
+/* header */
+.top{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:color-mix(in srgb,var(--card) 92%,transparent);
+  -webkit-backdrop-filter:saturate(1.4) blur(12px);backdrop-filter:saturate(1.4) blur(12px);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#3b82c4,#2f8a5f);display:grid;place-items:center;flex:none}
+.logo svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.top h1{font-size:17px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.top .sub{font-size:12px;color:var(--muted);line-height:1.2}
+.top .btns{display:flex;gap:6px;align-items:center}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;cursor:pointer;color:var(--fg)}
+.icon-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.icon-btn:active{background:var(--accent-soft)}
+.pill{border:0;border-radius:99px;padding:8px 14px;background:var(--accent);color:var(--accent-fg);font-weight:600;font-size:14px;cursor:pointer}
+.banner{background:var(--mod-bg);color:var(--mod);padding:8px 16px;font-size:14px;border-bottom:1px solid var(--line)}
+
+main{max-width:640px;margin:0 auto;padding:16px 14px 0}
 .view{display:none}
-.view.active{display:block}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.view.active{display:block;animation:fade .18s ease-out}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:12px;box-shadow:var(--shadow)}
+.card-title{font-size:17px;font-weight:700;letter-spacing:-.01em;margin-bottom:12px}
 .muted{color:var(--muted)}
 .small{font-size:14px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:12px;
-  padding:12px 16px;background:var(--accent);color:#fff;font-weight:600;cursor:pointer}
-.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--line)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:var(--r-sm);min-height:46px;
+  padding:10px 16px;background:var(--accent);color:var(--accent-fg);font-weight:600;cursor:pointer;transition:background .15s,transform .05s}
+.btn:active{transform:scale(.985)}
+.btn:hover{background:var(--accent-hover)}
+.btn.ghost{background:var(--accent-soft);color:var(--accent)}
+.btn.ghost:hover{background:color-mix(in srgb,var(--accent-soft) 80%,var(--accent) 20%)}
 .btn.block{width:100%}
+.btn:disabled{opacity:.55;cursor:default}
+.btn .ic,.ic{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.linkbtn{background:none;border:0;padding:10px 0 0;color:var(--accent);font-weight:600;font-size:14px;cursor:pointer}
 .row{display:flex;gap:8px}
 .row>*{flex:1}
-input[type=text],input[type=search],input[type=number],textarea{width:100%;padding:12px;border-radius:12px;
-  border:1px solid var(--line);background:var(--card)}
+input[type=text],input[type=search],input[type=number],textarea{width:100%;min-height:46px;padding:11px 13px;border-radius:var(--r-sm);
+  border:1px solid var(--line-strong);background:var(--card);outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent)}
 textarea{min-height:150px;resize:vertical}
-label.lbl{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
+label.lbl{display:block;font-size:13px;font-weight:600;color:var(--muted);margin:14px 0 6px;letter-spacing:.01em}
+.inline-add{display:flex;gap:8px}
+.inline-add input{flex:1}
+.inline-add .btn{flex:none}
+
+/* tegels (dagboek) */
+.tiles{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px}
+.tile{display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;gap:10px;min-height:84px;padding:12px;
+  border-radius:var(--r-sm);border:1px solid var(--line);background:var(--bg);cursor:pointer;text-align:left;font-weight:600;font-size:14px;line-height:1.25}
+.tile svg{width:22px;height:22px;stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tile.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.tile.primary svg{stroke:var(--accent-fg)}
+.tile:active{transform:scale(.98)}
 
 /* camera */
-.cam{position:relative;border-radius:16px;overflow:hidden;background:#000;aspect-ratio:4/3;margin-bottom:12px}
+.cam{position:relative;border-radius:var(--r);overflow:hidden;background:#000;aspect-ratio:4/3;margin-bottom:12px;box-shadow:var(--shadow)}
 .cam video{width:100%;height:100%;object-fit:cover;display:block}
 .cam .frame{position:absolute;inset:22% 10%;border:3px solid rgba(255,255,255,.85);border-radius:14px}
 .cam .frame::after{content:"";position:absolute;left:6%;right:6%;top:50%;height:2px;background:#ff4d4d;box-shadow:0 0 8px #ff4d4d}
@@ -59,98 +100,147 @@ label.lbl{display:block;font-size:14px;color:var(--muted);margin:10px 0 4px}
 .msg{font-size:14px;color:var(--muted);margin:8px 2px 12px}
 
 /* resultaat */
-.prod{display:flex;gap:12px;align-items:center;margin-bottom:12px}
-.prod img{width:72px;height:72px;object-fit:contain;border-radius:10px;background:#fff;border:1px solid var(--line)}
-.prod h2{font-size:18px;line-height:1.25}
-.verdict{border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:2px;margin-bottom:12px;color:#fff}
-.verdict strong{font-size:19px}
-.verdict span{font-size:14px;opacity:.95}
-.verdict.high{background:var(--high)}
-.verdict.mod{background:var(--mod);color:#2a1c00}
-.verdict.low{background:var(--low)}
-.verdict.unk{background:var(--unk)}
-.result h3{font-size:14px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 6px}
+.prod{display:flex;gap:12px;align-items:center;margin-bottom:14px}
+.prod img{width:64px;height:64px;object-fit:contain;border-radius:12px;background:#fff;border:1px solid var(--line)}
+.prod h2{font-size:18px;line-height:1.25;font-weight:700;letter-spacing:-.01em}
+.verdict{border-radius:var(--r-sm);padding:14px 14px 14px 16px;display:flex;flex-direction:column;gap:2px;margin-bottom:12px;border:1px solid transparent;border-left-width:5px}
+.verdict strong{font-size:17px}
+.verdict span{font-size:14px;color:var(--fg);opacity:.85}
+.verdict.high{background:var(--high-bg);border-color:var(--high);color:var(--high)}
+.verdict.mod{background:var(--mod-bg);border-color:var(--mod);color:var(--mod)}
+.verdict.low{background:var(--low-bg);border-color:var(--low);color:var(--low)}
+.verdict.unk{background:var(--unk-bg);border-color:var(--unk);color:var(--muted)}
+.result h3,.meal-head{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;margin:16px 0 8px}
 .hits{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.hit{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.hit{border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px}
 .hit-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .hit .small{margin-top:4px;color:var(--muted)}
-.dot{width:12px;height:12px;border-radius:50%;flex:none;background:var(--unk)}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--unk)}
 .dot.high{background:var(--high)}.dot.mod{background:var(--mod)}.dot.low{background:var(--low)}.dot.unsure{background:var(--unk)}
 .tags{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
-.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--unk-bg);color:var(--muted)}
+.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--unk-bg);color:var(--muted);font-weight:600}
 .ingr{line-height:1.9;font-size:15px}
 .tok{padding:1px 4px;border-radius:6px}
 .tok.high{background:var(--high-bg);color:var(--high);font-weight:600}
 .tok.mod{background:var(--mod-bg);color:var(--mod);font-weight:600}
 .tok.unsure{text-decoration:underline dotted var(--mod)}
 .actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.actions>.btn{flex:1 1 140px}
+.actions>.btn.full{flex-basis:100%}
 .disc{font-size:12px;color:var(--muted);margin-top:12px}
 
 /* lijsten */
 .list{list-style:none;margin:0;padding:0}
 .list li{display:flex;align-items:flex-start;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line)}
 .list li:last-child{border-bottom:0}
-.list .grow{flex:1;min-width:0}
+.list .grow,.grow{flex:1;min-width:0}
 .list .grow b{font-weight:600}
 .list button.plain{background:none;border:0;padding:0;text-align:left;width:100%;cursor:pointer}
-.x{background:none;border:0;color:var(--muted);font-size:20px;line-height:1;padding:4px 8px;cursor:pointer}
+.x{background:none;border:0;color:var(--muted);font-size:20px;line-height:1;padding:4px 8px;cursor:pointer;border-radius:8px}
+.x:active{background:var(--unk-bg)}
 .chips{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
-.chip{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:14px;cursor:pointer}
-.chip[aria-pressed=true]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.chip{border:1px solid var(--line-strong);background:var(--card);border-radius:99px;padding:7px 14px;font-size:14px;font-weight:500;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+
+/* dagboek */
+.day-title{font-size:15px;font-weight:700;margin:0 0 12px;text-transform:none;letter-spacing:0;color:var(--fg)}
+.day-title::first-letter{text-transform:uppercase}
+.goal{background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px}
+.goal-top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.goal-side{text-align:right}
+.goal-lbl{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.goal-val strong{font-size:24px;font-weight:750;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.goal-val span{font-size:14px;color:var(--muted);font-weight:500}
+.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin:10px 0 6px}
+.bar span{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 60%,var(--low)));transition:width .4s ease}
+.goal.done .bar span{background:var(--low)}
+.goal-note{font-size:13px;color:var(--muted);font-weight:500}
+.goal.done .goal-note{color:var(--low);font-weight:700}
+.meal-head{display:flex;justify-content:space-between;margin:18px 0 2px}
+.meal-sum{text-transform:none;letter-spacing:0;font-weight:600}
+.entry{align-items:center!important}
+.entry .dot{margin-top:0}
+.entry-name{font-weight:600;line-height:1.3}
+.entry-meta{font-size:13px;color:var(--muted);margin-top:1px}
+.entry-prot{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+textarea.note{min-height:56px;margin-top:14px;font-size:15px;background:var(--bg)}
 
 /* nav */
-nav.nav{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;background:var(--card);border-top:1px solid var(--line);
-  padding-bottom:env(safe-area-inset-bottom)}
-nav.nav button{flex:1;background:none;border:0;padding:9px 0 8px;display:flex;flex-direction:column;align-items:center;gap:2px;
-  color:var(--muted);font-size:12px;cursor:pointer}
-nav.nav button[aria-current=page]{color:var(--accent);font-weight:700}
-nav.nav svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+nav.nav{position:fixed;left:0;right:0;bottom:0;z-index:6;display:flex;background:color-mix(in srgb,var(--card) 94%,transparent);
+  -webkit-backdrop-filter:saturate(1.4) blur(12px);backdrop-filter:saturate(1.4) blur(12px);border-top:1px solid var(--line);
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+nav.nav button{flex:1;background:none;border:0;padding:4px 0;display:flex;flex-direction:column;align-items:center;gap:3px;
+  color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer}
+nav.nav svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+  padding:4px 16px;box-sizing:content-box;border-radius:99px;transition:background .15s}
+nav.nav button[aria-current=page]{color:var(--accent)}
+nav.nav button[aria-current=page] svg{background:var(--accent-soft)}
 
-dialog{border:0;border-radius:18px;padding:18px;max-width:440px;width:calc(100% - 28px);background:var(--card);color:var(--fg)}
-dialog::backdrop{background:rgba(0,0,0,.5)}
+/* dialogen */
+dialog{border:0;border-radius:20px;padding:18px;max-width:440px;width:calc(100% - 24px);background:var(--card);color:var(--fg);box-shadow:var(--shadow-lg)}
+dialog::backdrop{background:rgba(10,16,24,.5);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+dialog[open]{animation:pop .16s ease-out}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
 .grp{display:flex;gap:10px;align-items:flex-start;padding:8px 0}
 .grp input{width:22px;height:22px;margin-top:2px;accent-color:var(--accent)}
+.dlg-product{font-size:15px;font-weight:600;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:4px}
+.head-btns{display:flex;align-items:center;gap:4px}
+.fav-btn{width:38px;height:38px;border-radius:10px;border:0;background:none;display:grid;place-items:center;cursor:pointer;color:var(--muted)}
+.fav-btn svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linejoin:round}
+.fav-btn[aria-pressed=true]{color:#e0485f}
+.fav-btn[aria-pressed=true] svg{fill:currentColor}
 
 /* AI-chat */
 #aiChatDialog[open]{display:flex;flex-direction:column;max-height:80dvh;height:min(560px,80dvh);padding:14px;margin-top:5dvh;margin-bottom:auto}
-.ai-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex:none}
-.ai-head h2{font-size:17px}
-.ai-head button{background:none;border:0;color:var(--muted);font-size:24px;line-height:1;padding:0 4px;cursor:pointer}
+.ai-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex:none}
+.ai-head h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
+.ai-head button#aiChatClose,.ai-head button#productSearchClose,.ai-head button#diaryAddClose{background:none;border:0;color:var(--muted);font-size:26px;line-height:1;padding:0 6px;cursor:pointer}
 .ai-msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;-webkit-overflow-scrolling:touch}
 .ai-msg{max-width:88%;padding:9px 12px;border-radius:14px;font-size:14.5px;line-height:1.45;white-space:pre-wrap}
-.ai-msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.ai-msg.user{align-self:flex-end;background:var(--accent);color:var(--accent-fg);border-bottom-right-radius:4px}
 .ai-msg.assistant{align-self:flex-start;background:var(--unk-bg);color:var(--fg);border-bottom-left-radius:4px}
 .ai-msg.err{align-self:center;background:var(--high-bg);color:var(--high);font-size:13px}
 .ai-typing{align-self:flex-start;color:var(--muted);font-size:13px;padding:2px 6px}
 .ai-inputrow{display:flex;gap:8px;margin-top:10px;flex:none}
-.ai-inputrow textarea{flex:1;min-height:42px;max-height:110px;resize:none;padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:var(--bg)}
+.ai-inputrow textarea{flex:1;min-height:46px;max-height:110px;resize:none;padding:11px 12px;border-radius:14px;background:var(--bg)}
 .ai-inputrow button{flex:none;border-radius:14px;padding:0 18px}
 
 /* product zoeken */
-#productSearchDialog[open]{display:flex;flex-direction:column;max-height:80dvh;height:min(560px,80dvh);padding:14px;margin-top:5dvh;margin-bottom:auto}
+#productSearchDialog[open]{display:flex;flex-direction:column;max-height:84dvh;height:min(600px,84dvh);padding:14px;margin-top:5dvh;margin-bottom:auto}
 #productSearchResults{flex:1;overflow-y:auto;margin:6px 0 0;-webkit-overflow-scrolling:touch}
 #productSearchResults li{padding:10px 4px}
-.psr-name{font-weight:600}
+.psr-name{font-weight:600;line-height:1.3}
 .psr-meta{color:var(--muted);font-size:13px;margin-top:2px}
-#productSearchResults .psr-head{display:block;border-bottom:0;padding:12px 4px 2px;color:var(--accent);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+#productSearchResults .psr-head{display:block;border-bottom:0;padding:14px 4px 4px;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+#productSearchResults .psr-empty{border-bottom:0;padding:16px 4px}
+.quick{display:flex;align-items:center;gap:12px}
+.quick-ic{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:var(--unk-bg);color:var(--muted);font-size:15px;flex:none}
+.quick-ic.fav{background:#fde8ec;color:#e0485f}
+@media (prefers-color-scheme:dark){.quick-ic.fav{background:#3a1d24}}
 
 /* eenheid kiezen in dagboek-dialoog */
 #diaryAddDialog{max-height:90dvh;overflow-y:auto}
-.unit-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:40dvh;overflow-y:auto}
+.unit-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;max-height:40dvh;overflow-y:auto}
 .unit-list li+li{border-top:1px solid var(--line)}
-.unit-opt{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:11px 12px;text-align:left;cursor:pointer;font-size:16px}
-.unit-opt[aria-pressed=true]{color:var(--accent);font-weight:600;background:var(--unk-bg)}
+.unit-opt{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:12px;text-align:left;cursor:pointer;font-size:15.5px}
+.unit-opt[aria-pressed=true]{color:var(--accent);font-weight:600;background:var(--accent-soft)}
 .unit-check{width:18px;flex:none;font-weight:700;color:var(--accent)}
 </style>
 </head>
 <body>
 
 <header class="top">
-  <h1>FODMAP Scanner</h1>
+  <div class="brand">
+    <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19c0-8 5-13 14-14-1 9-6 14-14 14Z"/><path d="M5 19l7-7"/></svg></span>
+    <div>
+      <h1>FODMAP Scanner</h1>
+      <p class="sub">Laag-FODMAP &amp; eiwit</p>
+    </div>
+  </div>
   <div class="btns">
-    <button id="installBtn" hidden>Installeer</button>
-    <button id="aiChatBtn" aria-label="Open AI-assistent">AI</button>
-    <button id="settingsBtn" aria-label="Instellingen">Instellingen</button>
+    <button id="installBtn" class="pill" hidden>Installeer</button>
+    <button id="aiChatBtn" class="icon-btn" aria-label="Open AI-assistent" title="AI-assistent"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 4.9L19 9.7l-5.2 1.8L12 16.4l-1.8-4.9L5 9.7l5.2-1.8Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"/></svg></button>
+    <button id="settingsBtn" class="icon-btn" aria-label="Instellingen" title="Instellingen"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></button>
   </div>
 </header>
 <div id="offline" class="banner" hidden>Je bent offline: nieuwe barcodes opzoeken werkt niet, zoeken en historie wel.</div>
@@ -164,13 +254,14 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
       <button id="camStop" class="stop">Stop</button>
     </div>
     <div class="card">
-      <button id="camStart" class="btn block">Camera starten en scannen</button>
+      <h2 class="card-title">Product checken</h2>
+      <button id="camStart" class="btn block"><svg class="ic" viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>Barcode scannen</button>
       <p id="scanMsg" class="msg">Scan de barcode op de verpakking, of typ hem hieronder in.</p>
       <form id="codeForm" class="row">
         <input id="codeInput" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="Barcode, bijv. 8710400123456" aria-label="Barcode">
         <button class="btn" style="flex:0 0 auto">Zoek</button>
       </form>
-      <button id="productSearchOpen" type="button" class="btn ghost block" style="margin-top:10px">Product zoeken op naam</button>
+      <button id="productSearchOpen" type="button" class="btn ghost block" style="margin-top:10px"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Zoeken op productnaam</button>
     </div>
     <div id="scanResult"></div>
   </section>
@@ -234,18 +325,18 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
   <!-- DAGBOEK -->
   <section id="view-diary" class="view">
     <div class="card">
-      <h2 style="font-size:18px">Wat heb je gegeten?</h2>
-      <p class="msg">Scan een barcode of maak een foto van het etiket om het product te checken én meteen aan je dagboek toe te voegen (inclusief eiwit en calorieën) — of vul hieronder handmatig iets in.</p>
-      <div class="actions" style="margin-bottom:10px">
-        <button id="diaryScan" class="btn">Barcode scannen</button>
-        <button id="diaryPhoto" class="btn ghost">Foto van etiket</button>
-        <button id="diarySearch" class="btn ghost">Product zoeken</button>
+      <h2 class="card-title">Wat heb je gegeten?</h2>
+      <div class="tiles">
+        <button id="diarySearch" class="tile primary"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg><span>Zoeken &amp; favorieten</span></button>
+        <button id="diaryScan" class="tile"><svg viewBox="0 0 24 24"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg><span>Barcode</span></button>
+        <button id="diaryPhoto" class="tile"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span>Etiket</span></button>
       </div>
-      <textarea id="diaryInput" placeholder="Of typ hier direct wat je hebt gegeten, bijv. tosti met kaas, glas cola" style="min-height:70px"></textarea>
-      <div class="actions">
-        <button id="diaryAdd" class="btn">Toevoegen aan dagboek</button>
-        <button id="diaryToText" class="btn ghost">Eerst analyseren</button>
+      <label class="lbl" for="diaryInput">Of typ zelf iets in</label>
+      <div class="inline-add">
+        <input id="diaryInput" type="text" placeholder="bijv. tosti met kaas, glas cola">
+        <button id="diaryAdd" class="btn" aria-label="Toevoegen">Toevoegen</button>
       </div>
+      <button id="diaryToText" class="linkbtn">Eerst ingrediënten analyseren</button>
     </div>
     <div id="diaryList"></div>
     <p id="diaryEmpty" class="muted small" hidden>Nog niets bijgehouden. Voeg hierboven je eerste item toe.</p>
@@ -266,6 +357,13 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     <p class="small muted">Vink aan waar jij gevoelig voor bent. Alleen die FODMAP-groepen tellen mee in de uitslag.</p>
     <div id="groupBox" style="margin:10px 0"></div>
     <p class="disc">Deze app is indicatief en gebaseerd op algemene FODMAP-kennis. Portiegroottes worden niet beoordeeld; gebruik daarvoor de Monash FODMAP-app. Geen medisch advies: bespreek je dieet met een diëtist.</p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+    <h2 style="font-size:16px;margin-bottom:4px">Dagelijks eiwitdoel</h2>
+    <p class="small muted">Wordt in het dagboek getoond als voortgangsbalk.</p>
+    <div class="inline-add" style="margin-top:8px;max-width:200px">
+      <input id="proteinGoalInput" type="number" inputmode="numeric" min="0" step="1" aria-label="Eiwitdoel in gram">
+      <span class="muted" style="align-self:center">gram</span>
+    </div>
     <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
     <h2 style="font-size:16px;margin-bottom:4px">Back-up van je gegevens</h2>
     <p class="small muted">Je dagboek, historie en instellingen staan alleen lokaal op dit toestel. Maak een back-up om ze te bewaren of over te zetten naar een ander toestel.</p>
@@ -296,9 +394,12 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 <dialog id="diaryAddDialog">
   <div class="ai-head">
     <h2 id="diaryAddTitle">Toevoegen aan dagboek</h2>
-    <button id="diaryAddClose" type="button" aria-label="Sluiten">×</button>
+    <div class="head-btns">
+      <button id="diaryFavBtn" type="button" class="fav-btn" aria-pressed="false" aria-label="Bewaar als favoriet" title="Favoriet" hidden><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9.2-8.7C1.3 8.2 3.2 4.5 6.6 4.5c2 0 3.5 1.1 5.4 3 1.9-1.9 3.4-3 5.4-3 3.4 0 5.3 3.7 3.8 6.8C19 15.6 12 20 12 20Z"/></svg></button>
+      <button id="diaryAddClose" type="button" aria-label="Sluiten">×</button>
+    </div>
   </div>
-  <p id="diaryAddProduct" class="muted small" style="margin-bottom:10px"></p>
+  <p id="diaryAddProduct" class="dlg-product"></p>
   <label class="lbl">Maaltijd</label>
   <div class="chips" id="diaryMealChips">
     <button type="button" class="chip" data-meal="ontbijt">Ontbijt</button>
@@ -334,7 +435,7 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     <h2>Product zoeken</h2>
     <button id="productSearchClose" type="button" aria-label="Sluiten">×</button>
   </div>
-  <input id="productSearchInput" type="search" placeholder="Zoek op productnaam, bijv. kipfilet" aria-label="Product zoeken">
+  <input id="productSearchInput" type="search" placeholder="Zoek bijv. kipfilet, kwark, ei" aria-label="Product zoeken">
   <p id="productSearchStatus" class="msg" hidden></p>
   <ul id="productSearchResults" class="list"></ul>
 </dialog>

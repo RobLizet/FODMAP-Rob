@@ -29,7 +29,10 @@
   //  2.6.0 - Dagboek: eenheid kiezen (snee, stuk, eetlepel, glas, portie, gram…) plus aantal,
   //          zoals in Eetmeter; merkproducten krijgen de portie uit Open Food Facts. Bij bewerken
   //          worden eiwit/kcal opnieuw berekend als het product voedingswaarden per 100 g heeft
-  const APP_VERSION = '2.6.0';
+  //  2.7.0 - Eiwitdoel (instelbaar, standaard 90 g) als voortgangsbalk in het dagboek;
+  //          favorieten (hartje) en "recent gegeten" in Product zoeken, met onthouden eenheid;
+  //          professionelere vormgeving (nieuwe header, kaarten, tegels, navigatie)
+  const APP_VERSION = '2.7.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -71,7 +74,8 @@
     set(k, v) { try { localStorage.setItem('fodmap.' + k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
   };
 
-  let settings = Object.assign({ groups: Object.keys(F.GROUPS) }, store.get('settings', {}));
+  let settings = Object.assign({ groups: Object.keys(F.GROUPS), proteinGoal: 90 }, store.get('settings', {}));
+  let favorites = store.get('favorites', []); // [{key, text, brand, source, verdict, per100, portions, unit, count, qty}]
   let history = store.get('history', []);
   let diary = store.get('diary', {}); // { 'YYYY-MM-DD': { items: [{text, verdict, source, t}], note: '' } }
   let aiHistory = store.get('aiHistory', []); // [{role:'user'|'assistant', content}]
@@ -139,7 +143,7 @@
           h('p', { class: 'small', text: describeHit(hit, res.total) })))));
     }
 
-    if (res.items.length) {
+    if (res.items.length && data.source !== 'Basisproduct') {
       card.append(h('h3', { text: 'Ingrediënten' }));
       const p = h('p', { class: 'ingr' });
       res.items.forEach((it, i) => {
@@ -153,11 +157,11 @@
     const acts = actions ? actions(res) : [];
     if (data.text) {
       const diaryBtn = h('button', {
-        class: 'btn ghost', type: 'button', onclick: () => {
+        class: 'btn full', type: 'button', onclick: () => {
           openDiaryAddDialog(data.title || 'Product', verdictKey, data.source || (data.barcode ? 'Scan' : 'Handmatig'), data.per100 || null, data.brand || null, data.portions || null);
         }
       }, 'Voeg toe aan dagboek');
-      acts.push(diaryBtn);
+      acts.unshift(diaryBtn);
 
       const askBtn = h('button', {
         class: 'btn ghost', type: 'button', onclick: () => {
@@ -166,7 +170,7 @@
             '. Gevonden: ' + hitNames + '. Ingrediënten: ' + data.text + '. Kun je uitleggen waarom, en of ik het in een kleine portie zou kunnen proberen?';
           openAiChat(prefill);
         }
-      }, 'Vraag het de AI');
+      }, 'Vraag de AI');
       acts.push(askBtn);
     }
     if (acts && acts.length) card.append(h('div', { class: 'actions' }, acts));
@@ -279,7 +283,7 @@
     $('#camStart').hidden = false;
   }
 
-  const rescanBtn = () => h('button', { class: 'btn', onclick: () => { $('#codeInput').value = ''; startCamera(); } }, 'Volgend product scannen');
+  const rescanBtn = () => h('button', { class: 'btn ghost', onclick: () => { $('#codeInput').value = ''; startCamera(); } }, 'Volgende scannen');
 
   // Haalt eiwit en energie per 100g uit de Open Food Facts-nutriments, indien beschikbaar.
   function per100Nutrients(nutr) {
@@ -384,7 +388,8 @@
 
   function openProductSearch() {
     productSearchInput.value = '';
-    productSearchResultsEl.replaceChildren();
+    genericShown = []; offShown = [];
+    renderQuickPicks();
     setProductSearchStatus('', false);
     productSearchDialog.showModal();
     setTimeout(() => productSearchInput.focus(), 50);
@@ -478,13 +483,62 @@
     if (q.length < 2) {
       if (productSearchAbort) productSearchAbort.abort();
       genericShown = [];
-      productSearchResultsEl.replaceChildren();
+      renderQuickPicks();
       setProductSearchStatus('', false);
       return;
     }
     genericShown = searchGeneric(q);
     renderProductSearchResults(); // basisproducten meteen tonen
     productSearchTimer = setTimeout(() => runProductSearch(q), 450);
+  }
+
+  // Favorieten en recent gegeten: direct tonen bij een lege zoekbalk, één tik = toevoegen
+  function quickRow(entry, isFav) {
+    const meta = [];
+    if (entry.brand) meta.push(entry.brand);
+    const amt = itemAmountText(entry);
+    if (amt) meta.push(amt);
+    if (entry.per100 && entry.per100.protein != null && entry.qty) meta.push(fmtG(Math.round(entry.per100.protein * entry.qty / 10) / 10) + ' g eiwit');
+    return h('li', null, h('button', { class: 'plain grow quick', type: 'button', onclick: () => pickQuick(entry) },
+      h('span', { class: 'quick-ic' + (isFav ? ' fav' : ''), 'aria-hidden': 'true' }, isFav ? '♥' : '↺'),
+      h('span', { class: 'grow' },
+        h('div', { class: 'psr-name', text: entry.text }),
+        h('div', { class: 'psr-meta', text: meta.join(' · ') || entry.source || '' }))));
+  }
+  function recentEntries(limit) {
+    const favKeys = new Set(favorites.map(f => f.key));
+    const seen = new Set();
+    const out = [];
+    Object.keys(diary).sort().reverse().forEach(k => {
+      const items = (diary[k].items || []).slice().sort((a, b) => b.t - a.t);
+      items.forEach(it => {
+        if (!it.per100 || out.length >= limit) return;
+        const key = foodKey(it);
+        if (seen.has(key) || favKeys.has(key)) return;
+        seen.add(key);
+        out.push(Object.assign({ key }, it));
+      });
+    });
+    return out;
+  }
+  function renderQuickPicks() {
+    const items = [];
+    if (favorites.length) {
+      items.push(psrHead('Favorieten'));
+      favorites.forEach(f => items.push(quickRow(f, true)));
+    }
+    const rec = recentEntries(8);
+    if (rec.length) {
+      items.push(psrHead('Recent gegeten'));
+      rec.forEach(r => items.push(quickRow(r, false)));
+    }
+    if (!items.length) items.push(h('li', { class: 'psr-empty' },
+      h('p', { class: 'muted small', text: 'Typ om te zoeken. Producten die je toevoegt verschijnen hier als "recent gegeten"; tik op het hartje in het toevoegscherm om een favoriet te bewaren.' })));
+    productSearchResultsEl.replaceChildren(...items);
+  }
+  function pickQuick(e) {
+    productSearchDialog.close();
+    openDiaryAddDialog(e.text, e.verdict || '', e.source, e.per100, e.brand, e.portions, { unit: e.unit, count: e.count, qty: e.qty });
   }
 
   function pickGenericFood(g) {
@@ -786,6 +840,48 @@
     renderDiary();
   }
 
+  // ---------- favorieten ----------
+  function foodKey(e) {
+    return [e.source || '', (e.brand || '').toLowerCase(), (e.text || '').toLowerCase().trim()].join('|');
+  }
+  function isFavorite(e) { const k = foodKey(e); return favorites.some(f => f.key === k); }
+  function saveFavorites() { store.set('favorites', favorites); }
+  function toggleFavorite(ctx) {
+    const k = foodKey(ctx);
+    const i = favorites.findIndex(f => f.key === k);
+    if (i >= 0) favorites.splice(i, 1);
+    else {
+      const amt = amountFields();
+      favorites.unshift({
+        key: k, text: ctx.text, brand: ctx.brand || null, source: ctx.source, verdict: ctx.verdict || '',
+        per100: ctx.per100 || null, portions: ctx.portions || null,
+        unit: amt.unit, count: amt.count, qty: amt.qty
+      });
+    }
+    saveFavorites();
+    renderFavBtn();
+  }
+  // Onthoud de laatst gebruikte eenheid/aantal bij een favoriet
+  function touchFavorite(entry) {
+    const f = favorites.find(x => x.key === foodKey(entry));
+    if (!f) return;
+    f.unit = entry.unit || null; f.count = entry.count || null; f.qty = entry.qty || null;
+    saveFavorites();
+  }
+  const diaryFavBtn = $('#diaryFavBtn');
+  function renderFavBtn() {
+    const ctx = diaryEditCtx || diaryAddCtx;
+    diaryFavBtn.hidden = !(ctx && ctx.per100);
+    if (diaryFavBtn.hidden) return;
+    const on = isFavorite(ctx);
+    diaryFavBtn.setAttribute('aria-pressed', String(on));
+    diaryFavBtn.setAttribute('aria-label', on ? 'Verwijder uit favorieten' : 'Bewaar als favoriet');
+  }
+  diaryFavBtn.addEventListener('click', () => {
+    const ctx = diaryEditCtx || diaryAddCtx;
+    if (ctx) toggleFavorite(ctx);
+  });
+
   // ---------- eenheden (snee, stuk, eetlepel, gram…) ----------
   function fmtNum(n) { return Number(n).toLocaleString('nl-NL', { maximumFractionDigits: 1 }); }
   // Tekst in de keuzelijst, zoals Eetmeter: "voor 1 snee (6 gram)", "eetlepel (15 gram)", "gram"
@@ -951,7 +1047,7 @@
     if (dlgPer100) updateDiaryAutoNote();
   }
 
-  function openDiaryAddDialog(text, verdict, source, per100, brand, portions) {
+  function openDiaryAddDialog(text, verdict, source, per100, brand, portions, preset) {
     diaryEditCtx = null;
     diaryAddCtx = { text, verdict, source, per100: per100 || null, brand: brand || null, portions: portions || null };
     dlgPer100 = per100 || null;
@@ -962,11 +1058,18 @@
     setupUnits(portions);
     // Met portie-eenheden: standaard "1 snee/stuk/…"; alleen gram: 100 g (of leeg bij handmatig)
     diaryQtyEl.value = dlgUnits.length > 1 ? '1' : (per100 ? '100' : '');
+    // Favoriet/recent: vorige eenheid en aantal voorinvullen
+    if (preset) {
+      const idx = preset.unit ? dlgUnits.findIndex(u => !u.gram && u.label === preset.unit) : -1;
+      if (idx >= 0 && preset.count) { dlgUnitIdx = idx; diaryQtyEl.value = preset.count; }
+      else if (preset.qty) { dlgUnitIdx = dlgUnits.length - 1; diaryQtyEl.value = preset.qty; }
+    }
     renderUnitList();
     diaryProteinInput.value = '';
     diaryKcalInput.value = '';
     setDiaryAiStatus('', false);
     showNutrientMode();
+    renderFavBtn();
     diaryAddDialog.showModal();
     setTimeout(() => diaryQtyEl.focus(), 50);
   }
@@ -995,6 +1098,7 @@
     // Items met bewaarde per-100g-waarden (vanaf v2.6.0) rekenen automatisch opnieuw;
     // oudere of handmatige items: eiwit/kcal direct bewerken.
     showNutrientMode();
+    renderFavBtn();
     diaryAddDialog.showModal();
     setTimeout(() => (dlgPer100 ? diaryQtyEl : diaryProteinInput).focus(), 50);
   }
@@ -1023,6 +1127,7 @@
     const nut = nutrientFields(amt.qty);
     if (diaryEditCtx) {
       Object.assign(diaryEditCtx, amt, nut, { meal: getSelectedMeal() });
+      touchFavorite(diaryEditCtx);
       store.set('diary', diary);
       diaryEditCtx = null;
       diaryAddDialog.close();
@@ -1030,10 +1135,12 @@
       return;
     }
     if (!diaryAddCtx) return;
-    addDiaryItem(Object.assign({
+    const entry = Object.assign({
       text: diaryAddCtx.text, verdict: diaryAddCtx.verdict, source: diaryAddCtx.source, brand: diaryAddCtx.brand,
       meal: getSelectedMeal(), per100: diaryAddCtx.per100, portions: diaryAddCtx.portions
-    }, amt, nut));
+    }, amt, nut);
+    addDiaryItem(entry);
+    touchFavorite(entry);
     diaryAddDialog.close();
     $('#diaryInput').value = '';
   });
@@ -1049,42 +1156,57 @@
     const keys = Array.from(new Set([todayKey(), ...Object.keys(diary)])).sort().reverse();
     const visible = keys.filter(k => k === todayKey() || (diary[k] && (diary[k].items.length || (diary[k].note || '').trim())));
     $('#diaryEmpty').hidden = visible.some(k => diary[k] && (diary[k].items.length || (diary[k].note || '').trim()));
+    const goal = Number(settings.proteinGoal) > 0 ? Number(settings.proteinGoal) : 0;
 
     list.replaceChildren(...visible.map(key => {
       const day = diary[key] || { items: [], note: '' };
+      const isToday = key === todayKey();
       const noteArea = h('textarea', {
-        placeholder: 'Notitie voor deze dag (bijv. klachten, hoe je je voelde)…',
-        style: 'min-height:60px;margin-top:8px',
+        class: 'note', placeholder: 'Notitie voor deze dag (bijv. klachten, hoe je je voelde)…',
         oninput: e => setDiaryNote(key, e.target.value)
       });
       noteArea.value = day.note || '';
 
-      let totalProtein = 0, totalKcal = 0, hasProtein = false, hasKcal = false;
+      let totalProtein = 0, totalKcal = 0;
       day.items.forEach(it => {
-        if (typeof it.protein === 'number') { totalProtein += it.protein; hasProtein = true; }
-        if (typeof it.kcal === 'number') { totalKcal += it.kcal; hasKcal = true; }
+        if (typeof it.protein === 'number') totalProtein += it.protein;
+        if (typeof it.kcal === 'number') totalKcal += it.kcal;
       });
-      const totalsRow = (hasProtein || hasKcal) ? h('div', { class: 'row', style: 'gap:20px;margin:8px 0 4px' },
-        hasProtein ? h('div', null, h('div', { class: 'muted small', text: 'Eiwit' }), h('strong', { style: 'font-size:19px', text: fmtG(totalProtein) + ' g' })) : null,
-        hasKcal ? h('div', null, h('div', { class: 'muted small', text: 'Energie' }), h('strong', { style: 'font-size:19px', text: Math.round(totalKcal) + ' kcal' })) : null
-      ) : null;
+      totalProtein = Math.round(totalProtein * 10) / 10;
 
-      function itemRow(it, i) {
-        return h('li', null,
-          h('span', { class: 'dot ' + (LV[it.verdict] || 'unsure'), style: 'margin-top:6px' }),
-          h('div', { class: 'grow' },
-            h('b', { text: it.text }),
-            h('div', {
-              class: 'muted small', text: [
-                VERDICT[it.verdict] ? VERDICT[it.verdict].title : 'Niet gecontroleerd',
-                itemAmountText(it),
-                it.protein != null ? fmtG(it.protein) + ' g eiwit' : null,
-                it.kcal != null ? Math.round(it.kcal) + ' kcal' : null,
-                it.source,
-                new Date(it.t).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
-              ].filter(Boolean).join(' · ')
-            })),
-          h('button', { class: 'x', 'aria-label': 'Bewerken', style: 'font-size:16px', onclick: () => openDiaryEditDialog(it) }, '✎'),
+      // Eiwitdoel-voortgang
+      let goalBlock = null;
+      if (goal) {
+        const pct = Math.min(100, Math.round(totalProtein / goal * 100));
+        const reached = totalProtein >= goal;
+        const rest = Math.max(0, Math.round((goal - totalProtein) * 10) / 10);
+        goalBlock = h('div', { class: 'goal' + (reached ? ' done' : '') },
+          h('div', { class: 'goal-top' },
+            h('div', null,
+              h('div', { class: 'goal-lbl', text: 'Eiwit' }),
+              h('div', { class: 'goal-val' }, h('strong', { text: fmtG(totalProtein) }), h('span', { text: ' / ' + fmtG(goal) + ' g' }))),
+            h('div', { class: 'goal-side' },
+              h('div', { class: 'goal-lbl', text: 'Energie' }),
+              h('div', { class: 'goal-val' }, h('strong', { text: String(Math.round(totalKcal)) }), h('span', { text: ' kcal' })))),
+          h('div', { class: 'bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(goal), 'aria-valuenow': String(totalProtein), 'aria-label': 'Eiwit ten opzichte van doel' },
+            h('span', { style: 'width:' + pct + '%' })),
+          h('div', { class: 'goal-note', text: reached ? '✓ Eiwitdoel gehaald' : (isToday ? 'Nog ' + fmtG(rest) + ' g eiwit te gaan' : fmtG(rest) + ' g onder je doel') }));
+      } else if (day.items.length) {
+        goalBlock = h('div', { class: 'goal' },
+          h('div', { class: 'goal-top' },
+            h('div', null, h('div', { class: 'goal-lbl', text: 'Eiwit' }), h('div', { class: 'goal-val' }, h('strong', { text: fmtG(totalProtein) }), h('span', { text: ' g' }))),
+            h('div', { class: 'goal-side' }, h('div', { class: 'goal-lbl', text: 'Energie' }), h('div', { class: 'goal-val' }, h('strong', { text: String(Math.round(totalKcal)) }), h('span', { text: ' kcal' })))));
+      }
+
+      function itemRow(it) {
+        const verdictTitle = VERDICT[it.verdict] ? VERDICT[it.verdict].title : 'Niet gecontroleerd';
+        const meta = [itemAmountText(it), it.kcal != null ? Math.round(it.kcal) + ' kcal' : null, it.brand || null].filter(Boolean).join(' · ');
+        return h('li', { class: 'entry' },
+          h('span', { class: 'dot ' + (LV[it.verdict] || 'unsure'), title: verdictTitle, 'aria-label': verdictTitle }),
+          h('button', { class: 'plain grow', type: 'button', onclick: () => openDiaryEditDialog(it) },
+            h('div', { class: 'entry-name', text: it.text }),
+            meta ? h('div', { class: 'entry-meta', text: meta }) : null),
+          it.protein != null ? h('span', { class: 'entry-prot', text: fmtG(it.protein) + ' g' }) : h('span', { class: 'entry-prot muted', text: '–' }),
           h('button', { class: 'x', 'aria-label': 'Verwijderen', onclick: () => { day.items.splice(day.items.indexOf(it), 1); store.set('diary', diary); renderDiary(); } }, '×'));
       }
 
@@ -1092,16 +1214,16 @@
         ? h('div', null, MEAL_ORDER.map(meal => {
             const items = day.items.filter(it => (it.meal || 'snack') === meal);
             if (!items.length) return null;
-            return h('div', { style: 'margin-top:12px' },
-              h('h3', { text: MEAL_LABELS[meal] }),
+            const mp = Math.round(items.reduce((t, it) => t + (typeof it.protein === 'number' ? it.protein : 0), 0) * 10) / 10;
+            return h('div', { class: 'meal' },
+              h('div', { class: 'meal-head' }, h('span', { text: MEAL_LABELS[meal] }), h('span', { class: 'meal-sum', text: fmtG(mp) + ' g eiwit' })),
               h('ul', { class: 'list' }, items.map(it => itemRow(it))));
           }))
         : h('p', { class: 'muted small', style: 'margin-top:8px' }, 'Nog geen items voor deze dag.');
 
-      return h('section', { class: 'card' },
-        h('div', { class: 'row', style: 'align-items:center;margin-bottom:2px' },
-          h('h3', { style: 'font-size:15px;text-transform:none;letter-spacing:0;color:inherit;margin:0', text: dayHeading(key) })),
-        totalsRow,
+      return h('section', { class: 'card day' + (isToday ? ' today' : '') },
+        h('h3', { class: 'day-title', text: dayHeading(key) }),
+        goalBlock,
         itemsBlock,
         noteArea);
     }));
@@ -1112,6 +1234,7 @@
     if (!text) return;
     openDiaryAddDialog(text, '', 'Handmatig', null);
   });
+  $('#diaryInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#diaryAdd').click(); } });
   $('#diaryToText').addEventListener('click', () => {
     const text = $('#diaryInput').value.trim();
     pendingBarcode = '';
@@ -1256,7 +1379,15 @@
         h('div', null, h('b', { text: F.GROUPS[g] }), h('div', { class: 'muted small', text: F.GROUP_INFO[g] })));
     }));
   }
-  $('#settingsBtn').addEventListener('click', () => $('#settings').showModal());
+  const proteinGoalInput = $('#proteinGoalInput');
+  proteinGoalInput.value = settings.proteinGoal || '';
+  proteinGoalInput.addEventListener('input', () => {
+    const v = parseFloat(proteinGoalInput.value);
+    settings.proteinGoal = v > 0 ? Math.round(v) : 0;
+    store.set('settings', settings);
+    renderDiary();
+  });
+  $('#settingsBtn').addEventListener('click', () => { proteinGoalInput.value = settings.proteinGoal || ''; $('#settings').showModal(); });
 
   // ---------- back-up (export/import) ----------
   function setBackupStatus(t, show) {
@@ -1268,7 +1399,7 @@
   $('#exportDataBtn').addEventListener('click', () => {
     const payload = {
       app: 'fodmap-scanner', appVersion: APP_VERSION, exportedAt: new Date().toISOString(),
-      settings, history, diary, aiHistory
+      settings, history, diary, aiHistory, favorites
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1300,7 +1431,9 @@
         (j.diary ? Object.keys(j.diary).length : 0) + ' dagboek-dagen). Doorgaan?';
       if (!window.confirm(summary)) { setBackupStatus('Importeren geannuleerd.', true); return; }
 
-      settings = Object.assign({ groups: Object.keys(F.GROUPS) }, j.settings || {});
+      settings = Object.assign({ groups: Object.keys(F.GROUPS), proteinGoal: 90 }, j.settings || {});
+      favorites = Array.isArray(j.favorites) ? j.favorites : favorites;
+      store.set('favorites', favorites);
       history = Array.isArray(j.history) ? j.history : [];
       diary = j.diary && typeof j.diary === 'object' ? j.diary : {};
       aiHistory = Array.isArray(j.aiHistory) ? j.aiHistory : [];
