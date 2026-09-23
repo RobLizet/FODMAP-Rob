@@ -24,17 +24,9 @@
   //  2.4.1 - AI-schatting eiwit/kcal: merknaam meegeven en voorzichtiger bij merkproducten
   //          (voorkomt te hoge schattingen zoals bij koffiecapsules), plus duidelijke
   //          waarschuwing dat een AI-schatting kan afwijken van de echte verpakking
-  //  2.4.2 - Fix: "Product zoeken" gaf irrelevante treffers (bijv. Red Bull bij "Ei") omdat
-  //          Open Food Facts' zoek-API breed matcht zonder relevantiesortering; nu filteren
-  //          en sorteren we zelf op echte naam-/merkrelevantie, en worden HTML-entities in
-  //          merknamen (zoals &quot;) correct gedecodeerd
-  //  2.4.3 - Fix: bij meerdere zoekwoorden (bijv. "Dolce Gusto Grande") moet nu elk los woord
-  //          matchen in plaats van de hele term als één stuk tekst — zo komen alleen echte
-  //          treffers (de koffiecapsules) mee, niet elk product met één matchend woord (pizza's
-  //          met "Dolce"). Bij "Ei" kwamen ook nog Duitse "Eis"-producten (ijs) mee omdat de
-  //          woordgrens-check alleen het begin van het woord bekeek; korte zoekwoorden
-  //          (t/m 3 tekens) matchen nu alleen als heel woord in naam of merk
-  const APP_VERSION = '2.4.3';
+  //  2.5.0 - Product zoeken: ingebouwde basisproducten (ei, melk, brood, kip…) bovenaan,
+  //          merkproducten alleen uit Nederland en populairste eerst
+  const APP_VERSION = '2.5.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -373,108 +365,112 @@
     setTimeout(() => productSearchInput.focus(), 50);
   }
 
-  // Open Food Facts' search_simple=1 matcht op een intern, meertalig veld (categorieën,
-  // generieke naam e.d.), niet alleen op productnaam/merk — zonder woordgrenzen en zonder
-  // relevantiesortering. Daardoor kwam bijv. "Ei" toevallig uit bij Red Bull-producten.
-  // We filteren daarom zelf op echte relevantie (naam/merk bevat de zoekterm) en sorteren
-  // treffers waarbij de naam met de term begint of hem als los woord bevat naar boven.
-  const entityDecodeEl = document.createElement('textarea');
-  function decodeEntities(s) {
-    if (!s) return s;
-    entityDecodeEl.innerHTML = s;
-    return entityDecodeEl.value;
-  }
-  function normalizeSearch(s) {
-    return decodeEntities(String(s || ''))
-      .toLowerCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g, ''); // diakrieten weg (café -> cafe)
-  }
-  function cleanProduct(p) {
-    return Object.assign({}, p, {
-      product_name: decodeEntities(p.product_name || ''),
-      brands: decodeEntities(p.brands || '')
-    });
-  }
-  // Elk woord van de zoekterm moet ergens in naam+merk voorkomen (zoals een "en"-zoekopdracht),
-  // anders wordt het product uitgesloten. Zo blijft "Dolce Gusto Grande" alleen de capsules
-  // vinden (mist "gusto" bij een pizza), en "Ei" alleen echte eiproducten (mist "eis" als heel
-  // woord). Korte woorden (t/m 3 tekens) moeten een heel woord zijn — te dubbelzinnig als los
-  // prefix ("ei" zit ook in "eis", "eiland", "einde"). Langere woorden mogen ook een prefix of
-  // los onderdeel van een woord zijn, zodat zoeken terwijl je typt blijft werken.
-  function relevanceScore(p, tokens) {
-    const name = normalizeSearch(p.product_name);
-    const brand = normalizeSearch(p.brands);
-    const hay = name + ' ' + brand;
-    let total = 0;
-    for (const tok of tokens) {
-      const esc = tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const exactWord = new RegExp('(^|[^a-z0-9])' + esc + '($|[^a-z0-9])');
-      const strict = tok.length <= 3;
-      let s = 0;
-      if (exactWord.test(hay)) s = 3;
-      else if (!strict) {
-        const wordStart = new RegExp('(^|[^a-z0-9])' + esc);
-        if (wordStart.test(hay)) s = 2;
-        else if (hay.includes(tok)) s = 1;
+  // Basisvoedingsmiddelen (foods.js) — direct doorzoekbaar, ook offline
+  const GENERIC = (window.GENERIC_FOODS || []).map(([name, protein, kcal, extra], idx) => ({
+    name, idx, per100: { protein, kcal },
+    words: normSearch(name).split(/[^a-z0-9]+/).filter(Boolean),
+    extra: normSearch(extra || '').split(/[^a-z0-9]+/).filter(Boolean)
+  }));
+  function normSearch(s) { return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+  function searchGeneric(term) {
+    const tokens = normSearch(term).split(/[^a-z0-9]+/).filter(Boolean);
+    if (!tokens.length) return [];
+    const scored = [];
+    GENERIC.forEach(g => {
+      let score = 0;
+      for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i];
+        let s;
+        if (g.words[0] === t) s = 0;
+        else if (g.words[0].startsWith(t)) s = 1;
+        else if (g.words.some(w => w.startsWith(t))) s = 2;
+        else if (g.extra.some(w => w.startsWith(t))) s = 3;
+        else return; // alle zoekwoorden moeten matchen
+        score += i === 0 ? s * 10 : s;
       }
-      if (s === 0) return 0; // dit woord komt nergens voor: geen match
-      total += s + (name.startsWith(tok) ? 1 : 0);
-    }
-    return total;
+      scored.push({ g, score });
+    });
+    return scored.sort((a, b) => a.score - b.score || a.g.idx - b.g.idx).slice(0, 8).map(x => x.g);
   }
 
-  function renderProductSearchResults(products) {
-    productSearchResultsEl.replaceChildren(...products.map(p => {
-      const per100 = per100Nutrients(p.nutriments);
-      const meta = [p.brands || ''];
-      if (per100 && per100.protein != null) meta.push(fmtG(per100.protein) + ' g eiwit /100g');
-      if (per100 && per100.kcal != null) meta.push(Math.round(per100.kcal) + ' kcal /100g');
-      return h('li', null, h('button', { class: 'plain grow', type: 'button', onclick: () => pickSearchResult(p) },
-        h('div', { class: 'psr-name', text: p.product_name }),
-        h('div', { class: 'psr-meta', text: meta.filter(Boolean).join(' · ') || 'Geen merk- of voedingsinfo bekend' })));
-    }));
+  let genericShown = [];
+  let offShown = [];
+  function psrHead(t) { return h('li', { class: 'psr-head', text: t }); }
+  function renderProductSearchResults() {
+    const items = [];
+    if (genericShown.length) {
+      items.push(psrHead('Basisproducten'));
+      genericShown.forEach(g => items.push(h('li', null, h('button', { class: 'plain grow', type: 'button', onclick: () => pickGenericFood(g) },
+        h('div', { class: 'psr-name', text: g.name }),
+        h('div', { class: 'psr-meta', text: fmtG(g.per100.protein) + ' g eiwit /100g · ' + Math.round(g.per100.kcal) + ' kcal /100g' })))));
+    }
+    if (offShown.length) {
+      items.push(psrHead('Merkproducten (Open Food Facts)'));
+      offShown.forEach(p => {
+        const per100 = per100Nutrients(p.nutriments);
+        const meta = [p.brands || ''];
+        if (per100 && per100.protein != null) meta.push(fmtG(per100.protein) + ' g eiwit /100g');
+        if (per100 && per100.kcal != null) meta.push(Math.round(per100.kcal) + ' kcal /100g');
+        items.push(h('li', null, h('button', { class: 'plain grow', type: 'button', onclick: () => pickSearchResult(p) },
+          h('div', { class: 'psr-name', text: p.product_name }),
+          h('div', { class: 'psr-meta', text: meta.filter(Boolean).join(' · ') || 'Geen merk- of voedingsinfo bekend' }))));
+      });
+    }
+    productSearchResultsEl.replaceChildren(...items);
   }
 
   async function runProductSearch(term) {
     if (productSearchAbort) productSearchAbort.abort();
     productSearchAbort = new AbortController();
-    setProductSearchStatus('Zoeken…', true);
+    setProductSearchStatus('Merkproducten zoeken…', true);
     try {
+      // Alleen producten die in Nederland verkocht worden, populairste eerst
       const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + encodeURIComponent(term) +
-        '&search_simple=1&action=process&json=1&page_size=40' +
+        '&search_simple=1&action=process&json=1&page_size=20&sort_by=unique_scans_n' +
+        '&tagtype_0=countries&tag_contains_0=contains&tag_0=netherlands' +
         '&fields=code,product_name,brands,nutriments,ingredients_text_nl,ingredients_text,ingredients_text_en,image_front_small_url';
       const r = await fetch(url, { signal: productSearchAbort.signal });
       const j = await r.json();
-      const normTerm = normalizeSearch(term);
-      const tokens = normTerm.split(/\s+/).filter(t => t.length >= 2);
-      const searchTokens = tokens.length ? tokens : [normTerm];
-      const products = (j.products || [])
-        .filter(p => p.product_name)
-        .map(cleanProduct)
-        .map(p => ({ p, score: relevanceScore(p, searchTokens) }))
-        .filter(x => x.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 20)
-        .map(x => x.p);
-      renderProductSearchResults(products);
-      setProductSearchStatus(products.length ? '' : 'Niets gevonden voor “' + term + '”. Probeer een andere zoekterm, of scan de barcode.', !products.length);
+      offShown = (j.products || []).filter(p => p.product_name);
+      renderProductSearchResults();
+      const none = !offShown.length && !genericShown.length;
+      setProductSearchStatus(none ? 'Niets gevonden voor “' + term + '”. Probeer een andere zoekterm, of scan de barcode.' : '', none);
     } catch (e) {
       if (e.name === 'AbortError') return;
-      productSearchResultsEl.replaceChildren();
-      setProductSearchStatus('Zoeken mislukt. Controleer je internetverbinding en probeer opnieuw.', true);
+      offShown = [];
+      renderProductSearchResults();
+      setProductSearchStatus(genericShown.length
+        ? 'Merkproducten konden niet geladen worden (geen internet?). Basisproducten staan hieronder.'
+        : 'Zoeken mislukt. Controleer je internetverbinding en probeer opnieuw.', true);
     }
   }
 
   function scheduleProductSearch(term) {
     clearTimeout(productSearchTimer);
     const q = term.trim();
+    offShown = [];
     if (q.length < 2) {
       if (productSearchAbort) productSearchAbort.abort();
+      genericShown = [];
       productSearchResultsEl.replaceChildren();
       setProductSearchStatus('', false);
       return;
     }
+    genericShown = searchGeneric(q);
+    renderProductSearchResults(); // basisproducten meteen tonen
     productSearchTimer = setTimeout(() => runProductSearch(q), 450);
+  }
+
+  function pickGenericFood(g) {
+    const data = {
+      title: g.name, brand: '', image: '', barcode: '',
+      text: g.name, source: 'Basisproduct', per100: { protein: g.per100.protein, kcal: g.per100.kcal }
+    };
+    productSearchDialog.close();
+    showView('scan');
+    $('#codeInput').value = '';
+    setMsg('');
+    show($('#scanResult'), data, true, () => [rescanBtn()]);
   }
 
   function pickSearchResult(p) {
@@ -785,7 +781,7 @@
     if (p100.protein != null) parts.push(fmtG(p100.protein * qty / 100) + ' g eiwit');
     if (p100.kcal != null) parts.push(Math.round(p100.kcal * qty / 100) + ' kcal');
     diaryAutoNoteEl.textContent = parts.length
-      ? '≈ ' + parts.join(', ') + ' bij ' + qty + ' g (bron: Open Food Facts, per 100 g).'
+      ? '≈ ' + parts.join(', ') + ' bij ' + qty + ' g (bron: ' + (diaryAddCtx.source === 'Basisproduct' ? 'gemiddelde waarden' : 'Open Food Facts') + ', per 100 g).'
       : 'Geen voedingswaarden bekend voor dit product bij Open Food Facts.';
   }
   diaryQtyEl.addEventListener('input', updateDiaryAutoNote);
