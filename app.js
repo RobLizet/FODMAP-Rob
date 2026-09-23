@@ -21,7 +21,10 @@
   //  2.2.0 - Back-up: instellingen, dagboek en historie exporteren/importeren als bestand
   //  2.3.0 - "Schat met AI" bij handmatige dagboek-items: AI vult eiwit/kcal-schatting in
   //  2.4.0 - Dagboek-items achteraf bewerken (maaltijd, hoeveelheid, eiwit, kcal)
-  const APP_VERSION = '2.4.0';
+  //  2.4.1 - AI-schatting eiwit/kcal: merknaam meegeven en voorzichtiger bij merkproducten
+  //          (voorkomt te hoge schattingen zoals bij koffiecapsules), plus duidelijke
+  //          waarschuwing dat een AI-schatting kan afwijken van de echte verpakking
+  const APP_VERSION = '2.4.1';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -146,7 +149,7 @@
     if (data.text) {
       const diaryBtn = h('button', {
         class: 'btn ghost', type: 'button', onclick: () => {
-          openDiaryAddDialog(data.title || 'Product', verdictKey, data.source || (data.barcode ? 'Scan' : 'Handmatig'), data.per100 || null);
+          openDiaryAddDialog(data.title || 'Product', verdictKey, data.source || (data.barcode ? 'Scan' : 'Handmatig'), data.per100 || null, data.brand || null);
         }
       }, 'Voeg toe aan dagboek');
       acts.push(diaryBtn);
@@ -673,6 +676,7 @@
       text: (entry.text || '').trim() || 'Item',
       verdict: entry.verdict || '',
       source: entry.source || 'Handmatig',
+      brand: entry.brand || null,
       meal: entry.meal || 'snack',
       qty: typeof entry.qty === 'number' && !isNaN(entry.qty) ? entry.qty : null,
       protein: typeof entry.protein === 'number' && !isNaN(entry.protein) ? entry.protein : null,
@@ -723,10 +727,12 @@
   }
 
   async function estimateNutrientsWithAi() {
-    const ctxText = diaryEditCtx ? diaryEditCtx.text : (diaryAddCtx ? diaryAddCtx.text : null);
-    if (!ctxText) return;
+    const ctx = diaryEditCtx || diaryAddCtx;
+    if (!ctx || !ctx.text) return;
     const btn = $('#diaryAiEstimate');
     const qty = parseFloat(diaryQtyEl.value);
+    const isBranded = !!(ctx.brand || (ctx.source && /open food facts|scan/i.test(ctx.source)));
+    const desc = ctx.brand ? (ctx.text + ' (merk: ' + ctx.brand + ')') : ctx.text;
     btn.disabled = true;
     setDiaryAiStatus('AI schat de voedingswaarden…', true);
     try {
@@ -737,11 +743,17 @@
         (qty > 0)
           ? ('Gebruik als portiegrootte exact ' + qty + ' gram; vul dat ook in als "grams".')
           : 'Kies zelf een realistische, gangbare portiegrootte voor dit gerecht en geef die als "grams".',
-        'Gebruik algemene, realistische Nederlandse voedingswaarden-kennis. Geef bij twijfel een redelijke inschatting in plaats van te weigeren.'
-      ].join(' ');
+        'Gebruik algemene, realistische Nederlandse voedingswaarden-kennis. Geef bij twijfel een redelijke inschatting in plaats van te weigeren.',
+        isBranded
+          ? ('Dit is een specifiek merkproduct (mogelijk met barcode) waarvan je de exacte voedingswaarden niet zeker weet. ' +
+             'Ga uit van het product zoals het VERKOCHT wordt (bijv. droge koffiecapsule/-poeder, snack in de verpakking), ' +
+             'niet van een bereid gerecht met extra toegevoegde ingrediënten zoals melk, tenzij de naam dat expliciet noemt. ' +
+             'Geef bij onzekerheid liever een lagere, behoudende schatting dan een hoge.')
+          : ''
+      ].filter(Boolean).join(' ');
       const res = await fetch(AI_ENDPOINT, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: AI_MODEL, max_tokens: 200, system: sys, messages: [{ role: 'user', content: 'Gerecht: ' + ctxText }] })
+        body: JSON.stringify({ model: AI_MODEL, max_tokens: 200, system: sys, messages: [{ role: 'user', content: 'Product/gerecht: ' + desc }] })
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 429) throw new Error(data.error || 'Daglimiet van de AI bereikt — probeer het morgen weer of vul zelf in.');
@@ -753,7 +765,7 @@
       if (typeof parsed.protein_g === 'number') diaryProteinInput.value = Math.round(parsed.protein_g * 10) / 10;
       if (typeof parsed.kcal === 'number') diaryKcalInput.value = Math.round(parsed.kcal);
       if (!(qty > 0) && typeof parsed.grams === 'number') diaryQtyEl.value = Math.round(parsed.grams);
-      setDiaryAiStatus('Schatting ingevuld — controleer en pas aan waar nodig.', true);
+      setDiaryAiStatus('Schatting ingevuld — controleer en pas aan waar nodig' + (isBranded ? ', zeker bij dit merkproduct' : '') + '.', true);
     } catch (e) {
       const msg = (e && e.message ? e.message : 'onbekende fout').replace(/\.+$/, '');
       setDiaryAiStatus('Schatten mislukt: ' + msg + '.', true);
@@ -763,9 +775,9 @@
   }
   $('#diaryAiEstimate').addEventListener('click', estimateNutrientsWithAi);
 
-  function openDiaryAddDialog(text, verdict, source, per100) {
+  function openDiaryAddDialog(text, verdict, source, per100, brand) {
     diaryEditCtx = null;
-    diaryAddCtx = { text, verdict, source, per100: per100 || null };
+    diaryAddCtx = { text, verdict, source, per100: per100 || null, brand: brand || null };
     $('#diaryAddTitle').textContent = 'Toevoegen aan dagboek';
     $('#diaryAddConfirm').textContent = 'Toevoegen';
     $('#diaryAddProduct').textContent = text;
@@ -838,7 +850,7 @@
       if (!isNaN(kv)) kcal = Math.round(kv);
     }
     addDiaryItem({
-      text: diaryAddCtx.text, verdict: diaryAddCtx.verdict, source: diaryAddCtx.source,
+      text: diaryAddCtx.text, verdict: diaryAddCtx.verdict, source: diaryAddCtx.source, brand: diaryAddCtx.brand,
       meal: getSelectedMeal(), qty: qty > 0 ? qty : null, protein, kcal
     });
     diaryAddDialog.close();
