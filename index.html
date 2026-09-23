@@ -257,6 +257,15 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     <p class="small muted">Vink aan waar jij gevoelig voor bent. Alleen die FODMAP-groepen tellen mee in de uitslag.</p>
     <div id="groupBox" style="margin:10px 0"></div>
     <p class="disc">Deze app is indicatief en gebaseerd op algemene FODMAP-kennis. Portiegroottes worden niet beoordeeld; gebruik daarvoor de Monash FODMAP-app. Geen medisch advies: bespreek je dieet met een diëtist.</p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+    <h2 style="font-size:16px;margin-bottom:4px">Back-up van je gegevens</h2>
+    <p class="small muted">Je dagboek, historie en instellingen staan alleen lokaal op dit toestel. Maak een back-up om ze te bewaren of over te zetten naar een ander toestel.</p>
+    <div class="actions">
+      <button id="exportDataBtn" type="button" class="btn ghost">Exporteer back-up</button>
+      <button id="importDataBtn" type="button" class="btn ghost">Importeer back-up</button>
+      <input id="importDataInput" type="file" accept="application/json,.json" hidden>
+    </div>
+    <p id="backupStatus" class="msg" hidden aria-live="polite"></p>
     <p class="muted small" id="appVersion" style="margin-top:8px"></p>
     <div class="actions"><button class="btn">Sluiten</button></div>
   </form>

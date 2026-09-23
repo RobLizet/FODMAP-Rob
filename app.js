@@ -18,7 +18,8 @@
   //  2.0.0 - Dagboek houdt nu ook eiwit en calorieën bij (automatisch bij barcode-scan, anders
   //          handmatig), gegroepeerd per maaltijd (Ontbijt/Lunch/Diner/Snack) met dagtotalen
   //  2.1.0 - Product zoeken op naam (Open Food Facts), net als handmatig een barcode intypen
-  const APP_VERSION = '2.1.0';
+  //  2.2.0 - Back-up: instellingen, dagboek en historie exporteren/importeren als bestand
+  const APP_VERSION = '2.2.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -973,6 +974,71 @@
     }));
   }
   $('#settingsBtn').addEventListener('click', () => $('#settings').showModal());
+
+  // ---------- back-up (export/import) ----------
+  function setBackupStatus(t, show) {
+    const el = $('#backupStatus');
+    el.textContent = t;
+    el.hidden = !show;
+  }
+
+  $('#exportDataBtn').addEventListener('click', () => {
+    const payload = {
+      app: 'fodmap-scanner', appVersion: APP_VERSION, exportedAt: new Date().toISOString(),
+      settings, history, diary, aiHistory
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = 'fodmap-scanner-backup-' + stamp + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    setBackupStatus('Back-up gedownload.', true);
+  });
+
+  $('#importDataBtn').addEventListener('click', () => $('#importDataInput').click());
+  $('#importDataInput').addEventListener('change', async () => {
+    const file = $('#importDataInput').files && $('#importDataInput').files[0];
+    $('#importDataInput').value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const j = JSON.parse(text);
+      if (!j || typeof j !== 'object' || (j.app && j.app !== 'fodmap-scanner')) {
+        throw new Error('Dit bestand lijkt geen back-up van deze app te zijn.');
+      }
+      const summary = 'Dit vervangt je huidige gegevens op dit toestel door de back-up van ' +
+        (j.exportedAt ? new Date(j.exportedAt).toLocaleString('nl-NL') : 'onbekende datum') +
+        ' (' + (j.history ? j.history.length : 0) + ' historie-items, ' +
+        (j.diary ? Object.keys(j.diary).length : 0) + ' dagboek-dagen). Doorgaan?';
+      if (!window.confirm(summary)) { setBackupStatus('Importeren geannuleerd.', true); return; }
+
+      settings = Object.assign({ groups: Object.keys(F.GROUPS) }, j.settings || {});
+      history = Array.isArray(j.history) ? j.history : [];
+      diary = j.diary && typeof j.diary === 'object' ? j.diary : {};
+      aiHistory = Array.isArray(j.aiHistory) ? j.aiHistory : [];
+      store.set('settings', settings);
+      store.set('history', history);
+      store.set('diary', diary);
+      store.set('aiHistory', aiHistory);
+
+      buildSettings();
+      renderHistory();
+      renderDiary();
+      Object.keys(shown).forEach(id => {
+        const s = shown[id];
+        const el = document.getElementById(id);
+        if (el) renderResult(el, s.data, s.actions);
+      });
+      setBackupStatus('Back-up geïmporteerd — je gegevens zijn hersteld.', true);
+    } catch (e) {
+      setBackupStatus('Importeren mislukt: ' + (e && e.message ? e.message : 'ongeldig bestand') + '.', true);
+    }
+  });
 
   // ---------- installeren, offline, service worker ----------
   let deferred = null;
