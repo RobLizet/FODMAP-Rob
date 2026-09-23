@@ -301,6 +301,10 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
   <input id="diaryQty" type="number" inputmode="decimal" min="0" step="1" placeholder="bijv. 150">
   <p id="diaryAutoNote" class="msg" hidden></p>
   <div id="diaryManualNutrients" hidden>
+    <div class="actions" style="margin:0 0 4px">
+      <button id="diaryAiEstimate" type="button" class="btn ghost">Schat met AI</button>
+    </div>
+    <p id="diaryAiStatus" class="msg" hidden></p>
     <label class="lbl" for="diaryProteinInput">Eiwit (g) — schatting voor deze hoeveelheid</label>
     <input id="diaryProteinInput" type="number" inputmode="decimal" step="0.1" placeholder="optioneel">
     <label class="lbl" for="diaryKcalInput">Energie (kcal) — schatting voor deze hoeveelheid</label>

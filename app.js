@@ -19,7 +19,8 @@
   //          handmatig), gegroepeerd per maaltijd (Ontbijt/Lunch/Diner/Snack) met dagtotalen
   //  2.1.0 - Product zoeken op naam (Open Food Facts), net als handmatig een barcode intypen
   //  2.2.0 - Back-up: instellingen, dagboek en historie exporteren/importeren als bestand
-  const APP_VERSION = '2.2.0';
+  //  2.3.0 - "Schat met AI" bij handmatige dagboek-items: AI vult eiwit/kcal-schatting in
+  const APP_VERSION = '2.3.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -713,6 +714,52 @@
   }
   diaryQtyEl.addEventListener('input', updateDiaryAutoNote);
 
+  function setDiaryAiStatus(t, show) {
+    const el = $('#diaryAiStatus');
+    el.textContent = t;
+    el.hidden = !show;
+  }
+
+  async function estimateNutrientsWithAi() {
+    if (!diaryAddCtx) return;
+    const btn = $('#diaryAiEstimate');
+    const qty = parseFloat(diaryQtyEl.value);
+    btn.disabled = true;
+    setDiaryAiStatus('AI schat de voedingswaarden…', true);
+    try {
+      const sys = [
+        'Je schat voedingswaarden van een gerecht of product voor een Nederlands voedingsdagboek.',
+        'Antwoord UITSLUITEND met geldige JSON, zonder uitleg en zonder markdown-codeblok, exact in dit formaat:',
+        '{"grams": <getal: portiegrootte in gram>, "protein_g": <getal: eiwit in gram voor die portie>, "kcal": <getal: energie in kcal voor die portie>}',
+        (qty > 0)
+          ? ('Gebruik als portiegrootte exact ' + qty + ' gram; vul dat ook in als "grams".')
+          : 'Kies zelf een realistische, gangbare portiegrootte voor dit gerecht en geef die als "grams".',
+        'Gebruik algemene, realistische Nederlandse voedingswaarden-kennis. Geef bij twijfel een redelijke inschatting in plaats van te weigeren.'
+      ].join(' ');
+      const res = await fetch(AI_ENDPOINT, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: AI_MODEL, max_tokens: 200, system: sys, messages: [{ role: 'user', content: 'Gerecht: ' + diaryAddCtx.text }] })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 429) throw new Error(data.error || 'Daglimiet van de AI bereikt — probeer het morgen weer of vul zelf in.');
+      if (!res.ok) throw new Error(data.error || data.message || ('status ' + res.status));
+      const raw = (data.content || []).map(b => b.text || '').join('');
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('Kon geen schatting uit het antwoord halen.');
+      const parsed = JSON.parse(match[0]);
+      if (typeof parsed.protein_g === 'number') diaryProteinInput.value = Math.round(parsed.protein_g * 10) / 10;
+      if (typeof parsed.kcal === 'number') diaryKcalInput.value = Math.round(parsed.kcal);
+      if (!(qty > 0) && typeof parsed.grams === 'number') diaryQtyEl.value = Math.round(parsed.grams);
+      setDiaryAiStatus('Schatting ingevuld — controleer en pas aan waar nodig.', true);
+    } catch (e) {
+      const msg = (e && e.message ? e.message : 'onbekende fout').replace(/\.+$/, '');
+      setDiaryAiStatus('Schatten mislukt: ' + msg + '.', true);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  $('#diaryAiEstimate').addEventListener('click', estimateNutrientsWithAi);
+
   function openDiaryAddDialog(text, verdict, source, per100) {
     diaryAddCtx = { text, verdict, source, per100: per100 || null };
     $('#diaryAddProduct').textContent = text;
@@ -720,6 +767,7 @@
     diaryQtyEl.value = per100 ? '100' : '';
     diaryProteinInput.value = '';
     diaryKcalInput.value = '';
+    setDiaryAiStatus('', false);
     if (per100) {
       diaryManualBox.hidden = true;
       diaryAutoNoteEl.hidden = false;
