@@ -26,7 +26,10 @@
   //          waarschuwing dat een AI-schatting kan afwijken van de echte verpakking
   //  2.5.0 - Product zoeken: ingebouwde basisproducten (ei, melk, brood, kip…) bovenaan,
   //          merkproducten alleen uit Nederland en populairste eerst
-  const APP_VERSION = '2.5.0';
+  //  2.6.0 - Dagboek: eenheid kiezen (snee, stuk, eetlepel, glas, portie, gram…) plus aantal,
+  //          zoals in Eetmeter; merkproducten krijgen de portie uit Open Food Facts. Bij bewerken
+  //          worden eiwit/kcal opnieuw berekend als het product voedingswaarden per 100 g heeft
+  const APP_VERSION = '2.6.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -151,7 +154,7 @@
     if (data.text) {
       const diaryBtn = h('button', {
         class: 'btn ghost', type: 'button', onclick: () => {
-          openDiaryAddDialog(data.title || 'Product', verdictKey, data.source || (data.barcode ? 'Scan' : 'Handmatig'), data.per100 || null, data.brand || null);
+          openDiaryAddDialog(data.title || 'Product', verdictKey, data.source || (data.barcode ? 'Scan' : 'Handmatig'), data.per100 || null, data.brand || null, data.portions || null);
         }
       }, 'Voeg toe aan dagboek');
       acts.push(diaryBtn);
@@ -179,7 +182,8 @@
     history = history.filter(x => key(x) !== key(data));
     history.unshift({
       title: data.title || 'Product', brand: data.brand || '', image: data.image || '',
-      barcode: data.barcode || '', text: data.text, verdict, t: Date.now(), per100: data.per100 || null
+      barcode: data.barcode || '', text: data.text, verdict, t: Date.now(), per100: data.per100 || null,
+      portions: data.portions || null
     });
     history = history.slice(0, 40);
     store.set('history', history);
@@ -287,6 +291,27 @@
     return { protein, kcal };
   }
 
+  // Portie-eenheden uit Open Food Facts: [label, gram]. Gebruikt serving_quantity/serving_size
+  // (bijv. "1 capsule (7 g)") en de verpakkingsinhoud. "gram" komt er in de dialoog altijd bij.
+  function offPortions(p) {
+    const out = [];
+    if (!p) return out;
+    const sq = parseFloat(p.serving_quantity);
+    if (sq > 0 && sq <= 2000) {
+      let lbl = String(p.serving_size || '').trim();
+      lbl = lbl.replace(/\s*\(?\s*\d+[.,]?\d*\s*(g|gr|gram|ml)\s*\)?\s*$/i, '').trim(); // grammen staan er al achter
+      lbl = lbl.replace(/^1\s+/, '');
+      if (!lbl || /^\d/.test(lbl)) lbl = 'portie';
+      out.push([lbl.slice(0, 40), Math.round(sq * 10) / 10]);
+    }
+    const pq = parseFloat(p.product_quantity);
+    const pu = String(p.product_quantity_unit || 'g').toLowerCase();
+    if (pq > 0 && pq <= 2000 && (pu === 'g' || pu === 'ml') && !(sq > 0 && Math.abs(pq - sq) < 1)) {
+      out.push(['hele verpakking', Math.round(pq)]);
+    }
+    return out;
+  }
+
   async function lookup(raw) {
     const code = String(raw).replace(/\D/g, '');
     const out = $('#scanResult');
@@ -300,7 +325,7 @@
       const ctrl = new AbortController();
       const to = setTimeout(() => ctrl.abort(), 12000);
       const r = await fetch('https://world.openfoodfacts.org/api/v2/product/' + code +
-        '.json?fields=code,product_name,brands,image_front_small_url,ingredients_text,ingredients_text_nl,ingredients_text_en,nutriments',
+        '.json?fields=code,product_name,brands,image_front_small_url,ingredients_text,ingredients_text_nl,ingredients_text_en,nutriments,serving_size,serving_quantity,product_quantity,product_quantity_unit',
         { signal: ctrl.signal });
       clearTimeout(to);
       const j = await r.json();
@@ -319,7 +344,7 @@
         title: p.product_name || 'Onbekend product', brand: p.brands || '',
         image: p.image_front_small_url || '', barcode: code,
         text: p.ingredients_text_nl || p.ingredients_text || p.ingredients_text_en || '', source: 'Open Food Facts',
-        per100: per100Nutrients(p.nutriments)
+        per100: per100Nutrients(p.nutriments), portions: offPortions(p)
       };
       setMsg('');
       show(out, data, true, res => [
@@ -368,6 +393,7 @@
   // Basisvoedingsmiddelen (foods.js) — direct doorzoekbaar, ook offline
   const GENERIC = (window.GENERIC_FOODS || []).map(([name, protein, kcal, extra], idx) => ({
     name, idx, per100: { protein, kcal },
+    portions: (window.GENERIC_PORTIONS && window.GENERIC_PORTIONS[name]) || [],
     words: normSearch(name).split(/[^a-z0-9]+/).filter(Boolean),
     extra: normSearch(extra || '').split(/[^a-z0-9]+/).filter(Boolean)
   }));
@@ -428,7 +454,7 @@
       const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + encodeURIComponent(term) +
         '&search_simple=1&action=process&json=1&page_size=20&sort_by=unique_scans_n' +
         '&tagtype_0=countries&tag_contains_0=contains&tag_0=netherlands' +
-        '&fields=code,product_name,brands,nutriments,ingredients_text_nl,ingredients_text,ingredients_text_en,image_front_small_url';
+        '&fields=code,product_name,brands,nutriments,ingredients_text_nl,ingredients_text,ingredients_text_en,image_front_small_url,serving_size,serving_quantity,product_quantity,product_quantity_unit';
       const r = await fetch(url, { signal: productSearchAbort.signal });
       const j = await r.json();
       offShown = (j.products || []).filter(p => p.product_name);
@@ -464,7 +490,8 @@
   function pickGenericFood(g) {
     const data = {
       title: g.name, brand: '', image: '', barcode: '',
-      text: g.name, source: 'Basisproduct', per100: { protein: g.per100.protein, kcal: g.per100.kcal }
+      text: g.name, source: 'Basisproduct', per100: { protein: g.per100.protein, kcal: g.per100.kcal },
+      portions: g.portions
     };
     productSearchDialog.close();
     showView('scan');
@@ -478,7 +505,7 @@
       title: p.product_name || 'Onbekend product', brand: p.brands || '',
       image: p.image_front_small_url || '', barcode: p.code || '',
       text: p.ingredients_text_nl || p.ingredients_text || p.ingredients_text_en || '',
-      source: 'Open Food Facts', per100: per100Nutrients(p.nutriments)
+      source: 'Open Food Facts', per100: per100Nutrients(p.nutriments), portions: offPortions(p)
     };
     productSearchDialog.close();
     showView('scan');
@@ -738,30 +765,62 @@
   function addDiaryItem(entry) {
     const key = todayKey();
     if (!diary[key]) diary[key] = { items: [], note: '' };
+    const num = v => typeof v === 'number' && !isNaN(v) ? v : null;
     diary[key].items.push({
       text: (entry.text || '').trim() || 'Item',
       verdict: entry.verdict || '',
       source: entry.source || 'Handmatig',
       brand: entry.brand || null,
       meal: entry.meal || 'snack',
-      qty: typeof entry.qty === 'number' && !isNaN(entry.qty) ? entry.qty : null,
-      protein: typeof entry.protein === 'number' && !isNaN(entry.protein) ? entry.protein : null,
-      kcal: typeof entry.kcal === 'number' && !isNaN(entry.kcal) ? entry.kcal : null,
+      qty: num(entry.qty),
+      protein: num(entry.protein),
+      kcal: num(entry.kcal),
+      unit: entry.unit || null,          // bijv. 'snee'; null = gram
+      unitGrams: num(entry.unitGrams),
+      count: num(entry.count),
+      per100: entry.per100 || null,      // bewaard zodat bewerken opnieuw kan rekenen
+      portions: entry.portions && entry.portions.length ? entry.portions : null,
       t: Date.now()
     });
     store.set('diary', diary);
     renderDiary();
   }
 
-  // ---------- toevoegen-aan-dagboek dialoog (maaltijd, hoeveelheid, eiwit/kcal) ----------
+  // ---------- eenheden (snee, stuk, eetlepel, gram…) ----------
+  function fmtNum(n) { return Number(n).toLocaleString('nl-NL', { maximumFractionDigits: 1 }); }
+  // Tekst in de keuzelijst, zoals Eetmeter: "voor 1 snee (6 gram)", "eetlepel (15 gram)", "gram"
+  function unitOptionText(u) {
+    if (u.gram) return 'gram';
+    return withGrams(u.label, u.grams, 'gram');
+  }
+  // "snee (6 gram)", maar bij een label met eigen haakjes: "stuk (middel), 55 gram"
+  function withGrams(lbl, g, unitWord) {
+    return /\)\s*$/.test(lbl) ? lbl + ', ' + fmtNum(g) + ' ' + unitWord : lbl + ' (' + fmtNum(g) + ' ' + unitWord + ')';
+  }
+  // Korte weergave in het dagboek: "1 snee (35 g)", "2 × eetlepel (30 g)", "150 g"
+  function itemAmountText(it) {
+    if (it.qty == null) return null;
+    if (!it.unit || !it.count) return fmtNum(it.qty) + ' g';
+    const voor = /^voor\s+1\s+/i.test(it.unit);
+    if (it.count === 1) return withGrams(voor ? it.unit : '1 ' + it.unit, it.qty, 'g');
+    return withGrams(fmtNum(it.count) + ' × ' + it.unit.replace(/^voor\s+1\s+/i, ''), it.qty, 'g');
+  }
+
+  // ---------- toevoegen-aan-dagboek dialoog (maaltijd, eenheid, aantal, eiwit/kcal) ----------
   const diaryAddDialog = $('#diaryAddDialog');
   const diaryQtyEl = $('#diaryQty');
+  const diaryQtyLabel = $('#diaryQtyLabel');
+  const diaryUnitBox = $('#diaryUnitBox');
+  const diaryUnitList = $('#diaryUnitList');
   const diaryAutoNoteEl = $('#diaryAutoNote');
   const diaryManualBox = $('#diaryManualNutrients');
   const diaryProteinInput = $('#diaryProteinInput');
   const diaryKcalInput = $('#diaryKcalInput');
-  let diaryAddCtx = null; // { text, verdict, source, per100 }
+  let diaryAddCtx = null; // { text, verdict, source, per100, brand, portions }
   let diaryEditCtx = null; // het bestaande item-object dat bewerkt wordt, of null bij toevoegen
+  let dlgUnits = [{ label: 'gram', grams: 1, gram: true }];
+  let dlgUnitIdx = 0;
+  let dlgPer100 = null; // per-100g-waarden waarmee de dialoog automatisch rekent (of null = handmatig)
 
   function selectMealChip(meal) {
     $$('#diaryMealChips .chip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.meal === meal)));
@@ -772,16 +831,57 @@
   }
   $$('#diaryMealChips .chip').forEach(c => c.addEventListener('click', () => selectMealChip(c.dataset.meal)));
 
+  function setupUnits(portions) {
+    dlgUnits = (portions || [])
+      .filter(p => p && p[0] && p[1] > 0)
+      .map(p => ({ label: String(p[0]), grams: Number(p[1]), gram: false }));
+    dlgUnits.push({ label: 'gram', grams: 1, gram: true });
+    dlgUnitIdx = 0;
+  }
+  function renderUnitList() {
+    const multi = dlgUnits.length > 1;
+    diaryUnitBox.hidden = !multi;
+    diaryQtyLabel.textContent = multi ? 'Aantal' : 'Hoeveelheid (gram)';
+    diaryQtyEl.step = dlgUnits[dlgUnitIdx].gram ? '1' : '0.5';
+    diaryUnitList.replaceChildren(...dlgUnits.map((u, i) => h('li', null,
+      h('button', {
+        type: 'button', class: 'unit-opt', 'aria-pressed': String(i === dlgUnitIdx),
+        onclick: () => selectUnit(i)
+      }, h('span', { class: 'unit-check', 'aria-hidden': 'true' }, i === dlgUnitIdx ? '✓' : ''), unitOptionText(u)))));
+  }
+  function selectUnit(i) {
+    if (i === dlgUnitIdx) return;
+    const prevGrams = currentGrams();
+    dlgUnitIdx = i;
+    const u = dlgUnits[i];
+    // Bij wisselen naar gram: huidige hoeveelheid omrekenen; naar een portie: 1 stuk
+    diaryQtyEl.value = u.gram ? (prevGrams > 0 ? String(Math.round(prevGrams)) : (dlgPer100 ? '100' : '')) : '1';
+    renderUnitList();
+    updateDiaryAutoNote();
+  }
+  function currentCount() { const v = parseFloat(String(diaryQtyEl.value).replace(',', '.')); return v > 0 ? v : 0; }
+  function currentGrams() { return Math.round(currentCount() * dlgUnits[dlgUnitIdx].grams * 10) / 10; }
+
+  function calcFromPer100(p100, grams) {
+    let protein = null, kcal = null;
+    if (p100 && grams > 0) {
+      if (p100.protein != null) protein = Math.round(p100.protein * grams / 100 * 10) / 10;
+      if (p100.kcal != null) kcal = Math.round(p100.kcal * grams / 100);
+    }
+    return { protein, kcal };
+  }
+
   function updateDiaryAutoNote() {
-    if (!diaryAddCtx || !diaryAddCtx.per100) return;
-    const qty = parseFloat(diaryQtyEl.value);
-    const p100 = diaryAddCtx.per100;
-    if (!qty || qty <= 0) { diaryAutoNoteEl.textContent = 'Vul een hoeveelheid in om eiwit/energie te berekenen.'; return; }
+    if (!dlgPer100) return;
+    const grams = currentGrams();
+    if (!(grams > 0)) { diaryAutoNoteEl.textContent = 'Vul een aantal in om eiwit/energie te berekenen.'; return; }
+    const c = calcFromPer100(dlgPer100, grams);
     const parts = [];
-    if (p100.protein != null) parts.push(fmtG(p100.protein * qty / 100) + ' g eiwit');
-    if (p100.kcal != null) parts.push(Math.round(p100.kcal * qty / 100) + ' kcal');
+    if (c.protein != null) parts.push(fmtG(c.protein) + ' g eiwit');
+    if (c.kcal != null) parts.push(c.kcal + ' kcal');
+    const ctx = diaryEditCtx || diaryAddCtx || {};
     diaryAutoNoteEl.textContent = parts.length
-      ? '≈ ' + parts.join(', ') + ' bij ' + qty + ' g (bron: ' + (diaryAddCtx.source === 'Basisproduct' ? 'gemiddelde waarden' : 'Open Food Facts') + ', per 100 g).'
+      ? '≈ ' + parts.join(', ') + ' bij ' + fmtNum(grams) + ' g (bron: ' + (ctx.source === 'Basisproduct' ? 'gemiddelde waarden' : 'Open Food Facts') + ', per 100 g).'
       : 'Geen voedingswaarden bekend voor dit product bij Open Food Facts.';
   }
   diaryQtyEl.addEventListener('input', updateDiaryAutoNote);
@@ -796,7 +896,7 @@
     const ctx = diaryEditCtx || diaryAddCtx;
     if (!ctx || !ctx.text) return;
     const btn = $('#diaryAiEstimate');
-    const qty = parseFloat(diaryQtyEl.value);
+    const qty = currentGrams();
     const isBranded = !!(ctx.brand || (ctx.source && /open food facts|scan/i.test(ctx.source)));
     const desc = ctx.brand ? (ctx.text + ' (merk: ' + ctx.brand + ')') : ctx.text;
     btn.disabled = true;
@@ -830,7 +930,11 @@
       const parsed = JSON.parse(match[0]);
       if (typeof parsed.protein_g === 'number') diaryProteinInput.value = Math.round(parsed.protein_g * 10) / 10;
       if (typeof parsed.kcal === 'number') diaryKcalInput.value = Math.round(parsed.kcal);
-      if (!(qty > 0) && typeof parsed.grams === 'number') diaryQtyEl.value = Math.round(parsed.grams);
+      if (!(qty > 0) && typeof parsed.grams === 'number') {
+        dlgUnitIdx = dlgUnits.length - 1; // gram
+        renderUnitList();
+        diaryQtyEl.value = Math.round(parsed.grams);
+      }
       setDiaryAiStatus('Schatting ingevuld — controleer en pas aan waar nodig' + (isBranded ? ', zeker bij dit merkproduct' : '') + '.', true);
     } catch (e) {
       const msg = (e && e.message ? e.message : 'onbekende fout').replace(/\.+$/, '');
@@ -841,25 +945,28 @@
   }
   $('#diaryAiEstimate').addEventListener('click', estimateNutrientsWithAi);
 
-  function openDiaryAddDialog(text, verdict, source, per100, brand) {
+  function showNutrientMode() {
+    diaryManualBox.hidden = !!dlgPer100;
+    diaryAutoNoteEl.hidden = !dlgPer100;
+    if (dlgPer100) updateDiaryAutoNote();
+  }
+
+  function openDiaryAddDialog(text, verdict, source, per100, brand, portions) {
     diaryEditCtx = null;
-    diaryAddCtx = { text, verdict, source, per100: per100 || null, brand: brand || null };
+    diaryAddCtx = { text, verdict, source, per100: per100 || null, brand: brand || null, portions: portions || null };
+    dlgPer100 = per100 || null;
     $('#diaryAddTitle').textContent = 'Toevoegen aan dagboek';
     $('#diaryAddConfirm').textContent = 'Toevoegen';
     $('#diaryAddProduct').textContent = text;
     selectMealChip(guessMeal());
-    diaryQtyEl.value = per100 ? '100' : '';
+    setupUnits(portions);
+    // Met portie-eenheden: standaard "1 snee/stuk/…"; alleen gram: 100 g (of leeg bij handmatig)
+    diaryQtyEl.value = dlgUnits.length > 1 ? '1' : (per100 ? '100' : '');
+    renderUnitList();
     diaryProteinInput.value = '';
     diaryKcalInput.value = '';
     setDiaryAiStatus('', false);
-    if (per100) {
-      diaryManualBox.hidden = true;
-      diaryAutoNoteEl.hidden = false;
-      updateDiaryAutoNote();
-    } else {
-      diaryManualBox.hidden = false;
-      diaryAutoNoteEl.hidden = true;
-    }
+    showNutrientMode();
     diaryAddDialog.showModal();
     setTimeout(() => diaryQtyEl.focus(), 50);
   }
@@ -867,34 +974,55 @@
   function openDiaryEditDialog(it) {
     diaryAddCtx = null;
     diaryEditCtx = it;
+    dlgPer100 = it.per100 || null;
     $('#diaryAddTitle').textContent = 'Item wijzigen';
     $('#diaryAddConfirm').textContent = 'Opslaan';
     $('#diaryAddProduct').textContent = it.text;
     selectMealChip(it.meal || 'snack');
-    diaryQtyEl.value = it.qty != null ? it.qty : '';
+    setupUnits(it.portions);
+    const idx = it.unit ? dlgUnits.findIndex(u => !u.gram && u.label === it.unit) : -1;
+    if (idx >= 0 && it.count) {
+      dlgUnitIdx = idx;
+      diaryQtyEl.value = it.count;
+    } else {
+      dlgUnitIdx = dlgUnits.length - 1; // gram
+      diaryQtyEl.value = it.qty != null ? it.qty : '';
+    }
+    renderUnitList();
     diaryProteinInput.value = it.protein != null ? it.protein : '';
     diaryKcalInput.value = it.kcal != null ? it.kcal : '';
     setDiaryAiStatus('', false);
-    // Bij bewerken altijd de handmatige velden tonen: de oorspronkelijke per-100g-gegevens
-    // (indien van een barcode/zoekresultaat) zijn niet per item bewaard, dus eiwit/kcal
-    // worden direct bewerkt in plaats van herberekend uit een percentage.
-    diaryManualBox.hidden = false;
-    diaryAutoNoteEl.hidden = true;
+    // Items met bewaarde per-100g-waarden (vanaf v2.6.0) rekenen automatisch opnieuw;
+    // oudere of handmatige items: eiwit/kcal direct bewerken.
+    showNutrientMode();
     diaryAddDialog.showModal();
-    setTimeout(() => diaryProteinInput.focus(), 50);
+    setTimeout(() => (dlgPer100 ? diaryQtyEl : diaryProteinInput).focus(), 50);
+  }
+
+  function amountFields() {
+    const u = dlgUnits[dlgUnitIdx];
+    const grams = currentGrams();
+    return {
+      qty: grams > 0 ? grams : null,
+      unit: u.gram ? null : u.label,
+      unitGrams: u.gram ? null : u.grams,
+      count: u.gram ? null : (currentCount() || null)
+    };
+  }
+  function nutrientFields(grams) {
+    if (dlgPer100) return calcFromPer100(dlgPer100, grams);
+    const pv = parseFloat(diaryProteinInput.value);
+    const kv = parseFloat(diaryKcalInput.value);
+    return { protein: !isNaN(pv) ? pv : null, kcal: !isNaN(kv) ? Math.round(kv) : null };
   }
 
   $('#diaryAddClose').addEventListener('click', () => { diaryEditCtx = null; diaryAddDialog.close(); });
   diaryAddDialog.addEventListener('close', () => { diaryEditCtx = null; });
   $('#diaryAddConfirm').addEventListener('click', () => {
+    const amt = amountFields();
+    const nut = nutrientFields(amt.qty);
     if (diaryEditCtx) {
-      const qty = parseFloat(diaryQtyEl.value);
-      const pv = parseFloat(diaryProteinInput.value);
-      const kv = parseFloat(diaryKcalInput.value);
-      diaryEditCtx.meal = getSelectedMeal();
-      diaryEditCtx.qty = qty > 0 ? qty : null;
-      diaryEditCtx.protein = !isNaN(pv) ? pv : null;
-      diaryEditCtx.kcal = !isNaN(kv) ? Math.round(kv) : null;
+      Object.assign(diaryEditCtx, amt, nut, { meal: getSelectedMeal() });
       store.set('diary', diary);
       diaryEditCtx = null;
       diaryAddDialog.close();
@@ -902,23 +1030,10 @@
       return;
     }
     if (!diaryAddCtx) return;
-    const qty = parseFloat(diaryQtyEl.value);
-    let protein = null, kcal = null;
-    if (diaryAddCtx.per100) {
-      if (qty > 0) {
-        if (diaryAddCtx.per100.protein != null) protein = Math.round(diaryAddCtx.per100.protein * qty / 100 * 10) / 10;
-        if (diaryAddCtx.per100.kcal != null) kcal = Math.round(diaryAddCtx.per100.kcal * qty / 100);
-      }
-    } else {
-      const pv = parseFloat(diaryProteinInput.value);
-      const kv = parseFloat(diaryKcalInput.value);
-      if (!isNaN(pv)) protein = pv;
-      if (!isNaN(kv)) kcal = Math.round(kv);
-    }
-    addDiaryItem({
+    addDiaryItem(Object.assign({
       text: diaryAddCtx.text, verdict: diaryAddCtx.verdict, source: diaryAddCtx.source, brand: diaryAddCtx.brand,
-      meal: getSelectedMeal(), qty: qty > 0 ? qty : null, protein, kcal
-    });
+      meal: getSelectedMeal(), per100: diaryAddCtx.per100, portions: diaryAddCtx.portions
+    }, amt, nut));
     diaryAddDialog.close();
     $('#diaryInput').value = '';
   });
@@ -962,7 +1077,7 @@
             h('div', {
               class: 'muted small', text: [
                 VERDICT[it.verdict] ? VERDICT[it.verdict].title : 'Niet gecontroleerd',
-                it.qty != null ? it.qty + ' g' : null,
+                itemAmountText(it),
                 it.protein != null ? fmtG(it.protein) + ' g eiwit' : null,
                 it.kcal != null ? Math.round(it.kcal) + ' kcal' : null,
                 it.source,

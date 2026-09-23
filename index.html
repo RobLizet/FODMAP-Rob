@@ -133,6 +133,14 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .psr-name{font-weight:600}
 .psr-meta{color:var(--muted);font-size:13px;margin-top:2px}
 #productSearchResults .psr-head{display:block;border-bottom:0;padding:12px 4px 2px;color:var(--accent);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+
+/* eenheid kiezen in dagboek-dialoog */
+#diaryAddDialog{max-height:90dvh;overflow-y:auto}
+.unit-list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;max-height:40dvh;overflow-y:auto}
+.unit-list li+li{border-top:1px solid var(--line)}
+.unit-opt{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;padding:11px 12px;text-align:left;cursor:pointer;font-size:16px}
+.unit-opt[aria-pressed=true]{color:var(--accent);font-weight:600;background:var(--unk-bg)}
+.unit-check{width:18px;flex:none;font-weight:700;color:var(--accent)}
 </style>
 </head>
 <body>
@@ -298,7 +306,11 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
     <button type="button" class="chip" data-meal="diner">Diner</button>
     <button type="button" class="chip" data-meal="snack">Snack</button>
   </div>
-  <label class="lbl" for="diaryQty">Hoeveelheid (gram)</label>
+  <div id="diaryUnitBox" hidden>
+    <label class="lbl">Eenheid</label>
+    <ul id="diaryUnitList" class="unit-list"></ul>
+  </div>
+  <label class="lbl" for="diaryQty" id="diaryQtyLabel">Hoeveelheid (gram)</label>
   <input id="diaryQty" type="number" inputmode="decimal" min="0" step="1" placeholder="bijv. 150">
   <p id="diaryAutoNote" class="msg" hidden></p>
   <div id="diaryManualNutrients" hidden>
