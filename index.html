@@ -190,6 +190,7 @@ dialog[open]{animation:pop .16s ease-out}
 .grp{display:flex;gap:10px;align-items:flex-start;padding:8px 0}
 .grp input{width:22px;height:22px;margin-top:2px;accent-color:var(--accent)}
 .dlg-product{font-size:15px;font-weight:600;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:4px}
+input.dlg-product{width:100%;min-height:46px;font-family:inherit}
 .head-btns{display:flex;align-items:center;gap:4px}
 .fav-btn{width:38px;height:38px;border-radius:10px;border:0;background:none;display:grid;place-items:center;cursor:pointer;color:var(--muted)}
 .fav-btn svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linejoin:round}
@@ -417,7 +418,8 @@ dialog .signature{margin:18px 0 4px;font-size:24px}
       <button id="diaryAddClose" type="button" aria-label="Sluiten">×</button>
     </div>
   </div>
-  <p id="diaryAddProduct" class="dlg-product"></p>
+  <label class="lbl" for="diaryAddProduct" style="margin-top:4px">Naam</label>
+  <input id="diaryAddProduct" class="dlg-product" type="text" autocomplete="off" enterkeyhint="done" maxlength="120" placeholder="bijv. havermout met banaan">
   <label class="lbl">Maaltijd</label>
   <div class="chips" id="diaryMealChips">
     <button type="button" class="chip" data-meal="ontbijt">Ontbijt</button>

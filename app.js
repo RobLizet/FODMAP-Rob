@@ -41,7 +41,7 @@
   //  2.7.5 - Foto van etiket: kan nu ook een bestaande foto uit de galerij kiezen, niet alleen
   //          de camera direct openen; barcode niet gevonden geeft ook een directe "Foto van
   //          etiket"-knop
-  const APP_VERSION = '2.7.5';
+  const APP_VERSION = '2.7.6';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -998,6 +998,18 @@
   let dlgUnits = [{ label: 'gram', grams: 1, gram: true }];
   let dlgUnitIdx = 0;
   let dlgPer100 = null; // per-100g-waarden waarmee de dialoog automatisch rekent (of null = handmatig)
+  const diaryNameEl = $('#diaryAddProduct');
+  // Standaardnamen die de app zelf verzint: veld leeg tonen zodat je direct een eigen naam typt
+  const GENERIC_NAMES = ['eigen ingrediëntenlijst', 'product', 'item'];
+  function setDiaryName(text) {
+    const t = (text || '').trim();
+    diaryNameEl.value = GENERIC_NAMES.includes(t.toLowerCase()) ? '' : t;
+    diaryNameEl.dataset.fallback = t || 'Item';
+  }
+  function getDiaryName() {
+    return diaryNameEl.value.trim() || diaryNameEl.dataset.fallback || 'Item';
+  }
+  diaryNameEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); diaryQtyEl.focus(); } });
 
   function selectMealChip(meal) {
     $$('#diaryMealChips .chip').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.meal === meal)));
@@ -1071,11 +1083,12 @@
 
   async function estimateNutrientsWithAi() {
     const ctx = diaryEditCtx || diaryAddCtx;
-    if (!ctx || !ctx.text) return;
+    if (!ctx) return;
+    const name = getDiaryName();
     const btn = $('#diaryAiEstimate');
     const qty = currentGrams();
     const isBranded = !!(ctx.brand || (ctx.source && /open food facts|scan/i.test(ctx.source)));
-    const desc = ctx.brand ? (ctx.text + ' (merk: ' + ctx.brand + ')') : ctx.text;
+    const desc = ctx.brand ? (name + ' (merk: ' + ctx.brand + ')') : name;
     btn.disabled = true;
     setDiaryAiStatus('AI schat de voedingswaarden…', true);
     try {
@@ -1138,7 +1151,7 @@
     }
     $('#diaryAddTitle').textContent = 'Toevoegen aan dagboek';
     $('#diaryAddConfirm').textContent = 'Toevoegen';
-    $('#diaryAddProduct').textContent = text;
+    setDiaryName(text);
     selectMealChip(guessMeal());
     setupUnits(portions);
     // Met portie-eenheden: standaard "1 snee/stuk/…"; alleen gram: 100 g (of leeg bij handmatig)
@@ -1165,7 +1178,7 @@
     dlgPer100 = it.per100 || null;
     $('#diaryAddTitle').textContent = 'Item wijzigen';
     $('#diaryAddConfirm').textContent = 'Opslaan';
-    $('#diaryAddProduct').textContent = it.text;
+    setDiaryName(it.text);
     selectMealChip(it.meal || 'snack');
     if (it.per100 && it.source !== 'Basisproduct') {
       const aug = augmentPortions(it.portions, it.text);
@@ -1215,8 +1228,8 @@
     const amt = amountFields();
     const nut = nutrientFields(amt.qty);
     if (diaryEditCtx) {
-      Object.assign(diaryEditCtx, amt, nut, { meal: getSelectedMeal() });
-      touchFavorite(diaryEditCtx);
+      touchFavorite(Object.assign({}, diaryEditCtx, amt));
+      Object.assign(diaryEditCtx, amt, nut, { meal: getSelectedMeal(), text: getDiaryName() });
       store.set('diary', diary);
       diaryEditCtx = null;
       diaryAddDialog.close();
@@ -1225,11 +1238,11 @@
     }
     if (!diaryAddCtx) return;
     const entry = Object.assign({
-      text: diaryAddCtx.text, verdict: diaryAddCtx.verdict, source: diaryAddCtx.source, brand: diaryAddCtx.brand,
+      text: getDiaryName(), verdict: diaryAddCtx.verdict, source: diaryAddCtx.source, brand: diaryAddCtx.brand,
       meal: getSelectedMeal(), per100: diaryAddCtx.per100, portions: diaryAddCtx.portions
     }, amt, nut);
     addDiaryItem(entry);
-    touchFavorite(entry);
+    touchFavorite(Object.assign({}, entry, { text: diaryAddCtx.text }));
     diaryAddDialog.close();
     $('#diaryInput').value = '';
   });
