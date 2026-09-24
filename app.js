@@ -41,7 +41,11 @@
   //  2.7.5 - Foto van etiket: kan nu ook een bestaande foto uit de galerij kiezen, niet alleen
   //          de camera direct openen; barcode niet gevonden geeft ook een directe "Foto van
   //          etiket"-knop
-  const APP_VERSION = '2.7.6';
+  //  2.8.0 - Bier: gerstemout/tarwemout geeft niet meer automatisch "Hoog FODMAP" (fructanen
+  //          worden bij het brouwen grotendeels vergist; Monash: laag tot ±375 ml). Tekst die
+  //          geen ingrediëntenlijst is (voedingswaardetabel, wervende tekst van een foto) geeft
+  //          niet meer ten onrechte groen, maar "Geen ingrediëntenlijst herkend"
+  const APP_VERSION = '2.8.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -92,12 +96,14 @@
   let pendingBarcode = '';
 
   const enabled = () => new Set(settings.groups);
-  const LV = { high: 'high', moderate: 'mod', unsure: 'unsure', none: 'none', low: 'low' };
+  const LV = { high: 'high', moderate: 'mod', unsure: 'unsure', none: 'none', low: 'low', beerLow: 'low' };
   const VERDICT = {
     high: { cls: 'high', title: 'Hoog FODMAP', sub: 'Bevat ingrediënten die vaak klachten geven.' },
     moderate: { cls: 'mod', title: 'Matig FODMAP', sub: 'Bij dit product is de portiegrootte bepalend.' },
     low: { cls: 'low', title: 'Geen FODMAP-ingrediënten gevonden', sub: 'Op basis van de ingrediëntenlijst en jouw instellingen.' },
     unknown: { cls: 'unk', title: 'Geen ingrediënten beschikbaar', sub: 'Plak de ingrediëntenlijst zelf om te controleren.' },
+    beerLow: { cls: 'low', title: 'Laag FODMAP bij 1 glas/flesje', sub: 'Bier wordt van mout gebrouwen, maar de fructanen worden tijdens het brouwen grotendeels vergist. Volgens Monash is bier laag-FODMAP tot ongeveer 375 ml (1 flesje of blikje). Meer drinken of alcohol zelf kan de darm los daarvan wel prikkelen.' },
+    notList: { cls: 'unk', title: 'Geen ingrediëntenlijst herkend', sub: 'De tekst lijkt op een voedingswaardetabel of wervende tekst van de verpakking, niet op een ingrediëntenlijst. De uitslag is daarom niet betrouwbaar. Maak een foto van alleen het stuk na “Ingrediënten:” of typ de lijst over.' },
     lowSuspect: { cls: 'unk', title: 'Onduidelijk — controleer zelf', sub: 'De ingrediëntentekst van dit product lijkt onvolledig of niet kloppend (vaak een fout in Open Food Facts). Er zijn geen FODMAPs herkend, maar vertrouw dit niet blind: maak een foto van het etiket of typ de lijst handmatig over.' }
   };
 
@@ -115,6 +121,58 @@
     return false;
   }
 
+  // Herkent tekst die helemaal geen ingrediëntenlijst is, zoals een foto van de verkeerde
+  // kant van het etiket: voedingswaardetabel of lopende (wervende) zinnen in plaats van een opsomming.
+  function notIngredientList(text) {
+    if (!text) return false;
+    const t = String(text).toLowerCase();
+    if (t.length < 40) return false;
+    const nutri = t.match(/\b(kcal|kj|energie|energy|voedingswaarde\w*|nutrition\w*|koolhydraten|carbohydrates?|verzadigd\w*|saturated|eiwitten|proteins?|suikers|sugars|vetten|fat)\b/g) || [];
+    const distinct = new Set(nutri).size;
+    if (distinct >= 4 && /\b(kcal|kj|energie|energy|voedingswaarde\w*|nutrition\w*)\b/.test(t)) return true;
+    const parts = t.split(/[,;]/).map(x => x.trim()).filter(Boolean);
+    if (parts.length >= 3) {
+      const wordy = parts.filter(x => x.split(/\s+/).filter(w => /[a-zà-ÿ]{2,}/.test(w)).length > 6).length;
+      if (wordy / parts.length >= 0.4) return true;
+    }
+    return false;
+  }
+
+  // Bier: gerste-/tarwemout bevat fructanen, maar die worden bij het brouwen grotendeels vergist.
+  // Monash test bier als laag-FODMAP bij ±375 ml. Een trefwoordmatch op "gerst" is bij bier dus te streng.
+  const BEER_RE = /\b(bier|bieren|beer|beers|biere|bière|birra|cerveza|pils|pilsener|pilsner|lager|witbier|weizen|weissbier|tripel|dubbel|quadrupel|bock|bokbier|stout|porter|ipa|pale ale|amber ale|blond ale|radler|brouwerij|brewery|gebrouwen|brewed)\b/i;
+  const MALT_RE = /mout|malt|malz|gerst|barley|orge|tarwe|wheat|weizen|rogge|rye/i;
+  function isBeer(data) {
+    const t = [data.title, data.brand, data.categories, data.text].filter(Boolean).join(' ');
+    if (/ginger\s*ale|bierworst|biergist\s*tablet/i.test(t) && !/\b(bier|beer|pils)\b/i.test(data.title || '')) return false;
+    return BEER_RE.test(t) || /en:beers/i.test(data.categories || '');
+  }
+
+  // Eén centrale analyse: FODMAP-analyse plus correcties voor bier en onbruikbare tekst
+  function analyzeData(data) {
+    const res = F.analyze(data.text, enabled());
+    if (res.verdict === 'high' && isBeer(data)) {
+      const note = 'Bij bier worden de fructanen uit de mout grotendeels vergist: laag tot ±375 ml.';
+      let grainHit = false;
+      res.hits = res.hits.map(hit => {
+        const txt = [hit.name].concat(hit.terms || []).join(' ');
+        if (hit.level === 'high' && MALT_RE.test(txt)) { grainHit = true; return Object.assign({}, hit, { level: 'low', note }); }
+        return hit;
+      });
+      if (grainHit) {
+        res.items = (res.items || []).map(it => (it.level === 'high' && MALT_RE.test(it.text)) ? Object.assign({}, it, { level: 'low' }) : it);
+        const levels = res.hits.map(x => x.level);
+        res.verdict = levels.includes('high') ? 'high' : levels.includes('moderate') ? 'moderate' : 'beerLow';
+      }
+    }
+    res.key = res.verdict;
+    if (res.verdict === 'low') {
+      if (notIngredientList(data.text)) res.key = 'notList';
+      else if (looksUnreliable(data.text)) res.key = 'lowSuspect';
+    }
+    return res;
+  }
+
   function describeHit(hit, total) {
     let s = 'Gevonden als “' + hit.terms.join(', ') + '”';
     if (total > 1) s += ' (plek ' + hit.first + ' van ' + total + ')';
@@ -125,9 +183,8 @@
 
   function renderResult(target, data, actions) {
     shown[target.id] = { data, actions };
-    const res = F.analyze(data.text, enabled());
-    const suspect = res.verdict === 'low' && looksUnreliable(data.text);
-    const v = suspect ? VERDICT.lowSuspect : VERDICT[res.verdict];
+    const res = analyzeData(data);
+    const v = VERDICT[res.key] || VERDICT.unknown;
 
     const card = h('section', { class: 'card result' },
       h('div', { class: 'prod' },
@@ -162,7 +219,7 @@
       card.append(p);
     }
 
-    const verdictKey = suspect ? 'lowSuspect' : res.verdict;
+    const verdictKey = res.key;
     const acts = actions ? actions(res) : [];
     if (data.text) {
       const diaryBtn = h('button', {
@@ -196,7 +253,7 @@
     history.unshift({
       title: data.title || 'Product', brand: data.brand || '', image: data.image || '',
       barcode: data.barcode || '', text: data.text, verdict, t: Date.now(), per100: data.per100 || null,
-      portions: data.portions || null
+      portions: data.portions || null, categories: data.categories || ''
     });
     history = history.slice(0, 40);
     store.set('history', history);
@@ -205,7 +262,7 @@
 
   function show(target, data, save, actions) {
     const res = renderResult(target, data, actions);
-    if (save) saveHistory(data, res.verdict);
+    if (save) saveHistory(data, res.key);
     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -403,7 +460,7 @@
         title: p.product_name || 'Onbekend product', brand: p.brands || '',
         image: p.image_front_small_url || '', barcode: code,
         text: p.ingredients_text_nl || p.ingredients_text || p.ingredients_text_en || '', source: 'Open Food Facts',
-        per100: per100Nutrients(p.nutriments), portions: offPortions(p)
+        per100: per100Nutrients(p.nutriments), portions: offPortions(p), categories: p.categories || ''
       };
       setMsg('');
       show(out, data, true, res => [
@@ -614,7 +671,8 @@
       title: p.product_name || 'Onbekend product', brand: p.brands || '',
       image: p.image_front_small_url || '', barcode: p.code || '',
       text: p.ingredients_text_nl || p.ingredients_text || p.ingredients_text_en || '',
-      source: 'Open Food Facts', per100: per100Nutrients(p.nutriments), portions: offPortions(p)
+      source: 'Open Food Facts', per100: per100Nutrients(p.nutriments), portions: offPortions(p),
+      categories: p.categories || ''
     };
     productSearchDialog.close();
     showView('scan');
@@ -841,9 +899,10 @@
     $('#histEmpty').hidden = history.length > 0;
     $('#histClear').hidden = history.length === 0;
     ul.replaceChildren(...history.map((it, i) => {
-      const res = F.analyze(it.text, enabled());
+      const res = analyzeData(it);
+      const k = res.key;
       return h('li', null,
-        h('span', { class: 'dot ' + (res.verdict === 'high' ? 'high' : res.verdict === 'moderate' ? 'mod' : res.verdict === 'low' ? 'low' : 'unsure'), style: 'margin-top:6px' }),
+        h('span', { class: 'dot ' + (k === 'high' ? 'high' : k === 'moderate' ? 'mod' : (k === 'low' || k === 'beerLow') ? 'low' : 'unsure'), style: 'margin-top:6px' }),
         h('button', { class: 'plain grow', onclick: () => show($('#histResult'), it, false) },
           h('b', { text: it.title }),
           h('div', { class: 'muted small', text: [it.brand, new Date(it.t).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })].filter(Boolean).join(' · ') })),
