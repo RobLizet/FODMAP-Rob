@@ -53,7 +53,10 @@
   //  2.9.0 - Foto van het etiket wordt bij "Analyseer" automatisch bewaard bij de scan in
   //          Historie (verkleind, in IndexedDB); miniatuur in de lijst en het resultaat,
   //          tik op "Foto bekijken" voor de volledige foto. Verwijderen in Historie wist ook de foto
-  const APP_VERSION = '2.9.0';
+  //  2.9.1 - Onleesbare foto-tekst (OCR-wartaal, bijv. van een gebogen of glimmende verpakking)
+  //          geeft niet meer ten onrechte groen, maar "Tekst niet leesbaar"; na het fotograferen
+  //          krijg je meteen de melding om een nieuwe foto te maken
+  const APP_VERSION = '2.9.1';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -111,6 +114,7 @@
     low: { cls: 'low', title: 'Geen FODMAP-ingrediënten gevonden', sub: 'Op basis van de ingrediëntenlijst en jouw instellingen.' },
     unknown: { cls: 'unk', title: 'Geen ingrediënten beschikbaar', sub: 'Plak de ingrediëntenlijst zelf om te controleren.' },
     beerLow: { cls: 'low', title: 'Laag FODMAP bij 1 glas/flesje', sub: 'Bier wordt van mout gebrouwen, maar de fructanen worden tijdens het brouwen grotendeels vergist. Volgens Monash is bier laag-FODMAP tot ongeveer 375 ml (1 flesje of blikje). Meer drinken of alcohol zelf kan de darm los daarvan wel prikkelen.' },
+    garbled: { cls: 'unk', title: 'Tekst niet leesbaar', sub: 'De foto is niet goed gelezen: de ingrediëntentekst is grotendeels wartaal, dus er kan van alles in zitten dat niet herkend is. Maak een nieuwe foto van alleen de ingrediëntenlijst: recht ervoor, dichtbij, goed licht en zonder glimmende plekken. Of typ de lijst over.' },
     notList: { cls: 'unk', title: 'Geen ingrediëntenlijst herkend', sub: 'De tekst lijkt op een voedingswaardetabel of wervende tekst van de verpakking, niet op een ingrediëntenlijst. De uitslag is daarom niet betrouwbaar. Maak een foto van alleen het stuk na “Ingrediënten:” of typ de lijst over.' },
     lowSuspect: { cls: 'unk', title: 'Onduidelijk — controleer zelf', sub: 'De ingrediëntentekst van dit product lijkt onvolledig of niet kloppend (vaak een fout in Open Food Facts). Er zijn geen FODMAPs herkend, maar vertrouw dit niet blind: maak een foto van het etiket of typ de lijst handmatig over.' }
   };
@@ -127,6 +131,21 @@
     const commas = (t.match(/,/g) || []).length;
     if (t.length > 80 && commas < 2) return true; // lange tekst zonder opsomming: geen echte ingrediëntenlijst
     return false;
+  }
+
+  // Herkent OCR-wartaal: veel losse letters/tekens en bijna geen herkenbare ingrediëntwoorden.
+  // Getest: wartaal scoort 0% herkenbare woorden, echte ingrediëntenlijsten 65–93%.
+  const VOCAB = /suiker|bloem|meel|olie|vet|zout|water|melk|room|boter|zetmeel|aroma|emulga|lecithin|cacao|chocola|tarwe|rogge|gerst|haver|mais|rijst|glucose|fructose|siroop|stroop|poeder|gist|rijsmiddel|natrium|kalium|calcium|zuur|citroen|azijn|ei|eiwit|soja|noot|noten|hazel|amandel|pinda|vanil|kruid|specerij|peper|ui|knoflook|tomaat|kaas|wei|dextro|maltodex|stabilisat|verdik|conserv|antioxid|kleurstof|vitamin|vezel|inuline|sorbitol|zoetstof|extract|concentra|gemodificeerd|gehydrogeneerd|palm|raapzaad|zonnebloem|kokos|vlees|kip|varken|rund|vis|groente|fruit|appel|aardbei|banaan|stremsel|zuursel|cultures|koemelk|gepasteuriseerd|sugar|flour|oil|salt|milk|wheat|starch|flavou?r|emulsifier|cocoa|fat|egg|syrup|powder|acid|vegetable|sunflower|rapeseed|butter|cream|yeast|raising|lactose|whey|zucker|mehl|weizen|salz|sel|farine|sucre|lait|huile|ble|e\d{3}/i;
+  function looksGarbled(text) {
+    const t = String(text || '');
+    const words = t.split(/\s+/).map(w => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')).filter(Boolean);
+    if (words.length < 8) return false;
+    const letters = w => (w.match(/\p{L}/gu) || []).length;
+    const short = words.filter(w => letters(w) <= 2).length / words.length;
+    const sym = (t.match(/[|=»«{}~$<>©®^\\\[\]“”_]/g) || []).length / t.length;
+    const longw = words.filter(w => letters(w) >= 3);
+    const vocab = longw.length ? longw.filter(w => VOCAB.test(w)).length / longw.length : 0;
+    return (short > 0.4 || sym > 0.02) && vocab < 0.3;
   }
 
   // Herkent tekst die helemaal geen ingrediëntenlijst is, zoals een foto van de verkeerde
@@ -177,7 +196,8 @@
     res.key = res.verdict;
     if (res.verdict === 'low') {
       const part = F.ingredientPart(data.text).text;
-      if (notIngredientList(part)) res.key = 'notList';
+      if (looksGarbled(part)) res.key = 'garbled';
+      else if (notIngredientList(part)) res.key = 'notList';
       else if (looksUnreliable(part)) res.key = 'lowSuspect';
     }
     return res;
@@ -912,7 +932,9 @@
       } else {
         const existing = $('#txtIngr').value.trim();
         $('#txtIngr').value = existing ? existing + ', ' + text : text;
-        setOcrStatus('Tekst herkend — controleer de lijst hieronder en corrigeer waar nodig voor je analyseert.', true);
+        setOcrStatus(looksGarbled(F.ingredientPart(text).text)
+          ? 'De foto is niet goed leesbaar (de herkende tekst is grotendeels wartaal). Maak liever een nieuwe foto: recht voor de ingrediëntenlijst, dichtbij, goed licht, geen glimmende plekken.'
+          : 'Tekst herkend — controleer de lijst hieronder en corrigeer waar nodig voor je analyseert.', true);
         $('#txtIngr').focus();
       }
     } catch (e) {
