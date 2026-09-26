@@ -56,7 +56,12 @@
   //  2.9.1 - Onleesbare foto-tekst (OCR-wartaal, bijv. van een gebogen of glimmende verpakking)
   //          geeft niet meer ten onrechte groen, maar "Tekst niet leesbaar"; na het fotograferen
   //          krijg je meteen de melding om een nieuwe foto te maken
-  const APP_VERSION = '2.9.1';
+  //  3.0.0 - Foto van etiket wordt uitgelezen door AI (Claude, via de toto-proxy): veel beter bij
+  //          gebogen/glimmende verpakkingen, neemt alleen de ingrediëntenlijst over (geen
+  //          voedingstabel/reclametekst), vult de productnaam in en leest suikers per 100 g.
+  //          Onleesbare foto -> melding om opnieuw te fotograferen. Geen internet of AI-fout ->
+  //          automatisch terug naar de oude tekstherkenning (Tesseract)
+  const APP_VERSION = '3.0.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -177,7 +182,8 @@
 
   // Eén centrale analyse: FODMAP-analyse plus correcties voor bier en onbruikbare tekst
   function analyzeData(data) {
-    const sugars = data.per100 && typeof data.per100.sugars === 'number' ? data.per100.sugars : undefined;
+    const sugars = typeof data.sugars === 'number' ? data.sugars
+      : (data.per100 && typeof data.per100.sugars === 'number' ? data.per100.sugars : undefined);
     const res = F.analyze(data.text, enabled(), { context: [data.title, data.categories].filter(Boolean).join(' '), sugars });
     if (res.verdict === 'high' && isBeer(data)) {
       const note = 'Bij bier worden de fructanen uit de mout grotendeels vergist: laag tot ±375 ml.';
@@ -284,7 +290,7 @@
     history.unshift({
       title: data.title || 'Product', brand: data.brand || '', image: data.image || '',
       barcode: data.barcode || '', text: data.text, verdict, t: Date.now(), per100: data.per100 || null,
-      portions: data.portions || null, categories: data.categories || '', photoId: data.photoId || '',
+      portions: data.portions || null, categories: data.categories || '', photoId: data.photoId || '', sugars: typeof data.sugars === 'number' ? data.sugars : null,
       source: data.source || ''
     });
     history = history.slice(0, 40);
@@ -313,7 +319,7 @@
   function goToText(barcode, title) {
     pendingBarcode = barcode || '';
     $('#txtName').value = title || '';
-    $('#txtIngr').value = ''; pendingPhotos = [];
+    $('#txtIngr').value = ''; pendingPhotos = []; pendingSugars = null;
     $('#txtHint').textContent = barcode ? 'Typ of plak de ingrediëntenlijst van de verpakking (barcode ' + barcode + ').' : '';
     $('#textResult').replaceChildren();
     showView('text');
@@ -324,7 +330,7 @@
   function goToPhoto(barcode, title) {
     pendingBarcode = barcode || '';
     $('#txtName').value = title || '';
-    $('#txtIngr').value = ''; pendingPhotos = [];
+    $('#txtIngr').value = ''; pendingPhotos = []; pendingSugars = null;
     $('#txtHint').textContent = 'Maak een foto van het etiket — de tekst verschijnt hieronder om te controleren.';
     $('#textResult').replaceChildren();
     showView('text');
@@ -726,6 +732,8 @@
   // ---------- etiketfoto's (IndexedDB; localStorage is te klein voor foto's) ----------
   // pendingPhotos: foto's van de huidige invoer, [{ blob, thumb }]. Wordt bewaard bij "Analyseer".
   let pendingPhotos = [];
+  // pendingSugars: suikers per 100 g die de AI van het etiket las (null = onbekend).
+  let pendingSugars = null;
   const photoDb = (() => {
     let dbp = null;
     const open = () => dbp || (dbp = new Promise((resolve, reject) => {
@@ -799,6 +807,7 @@
         photoDb.put(pendingPhotos.id, pendingPhotos.map(x => x.blob)).catch(() => {});
       }
       data.photoId = pendingPhotos.id;
+      if (pendingSugars != null) data.sugars = pendingSugars;
       data.image = pendingPhotos[0].thumb;
       data.source = 'Foto';
     }
@@ -809,7 +818,7 @@
     catch (e) { $('#txtHint').textContent = 'Plakken niet toegestaan: houd het tekstveld ingedrukt en kies Plakken.'; }
   });
   $('#txtClear').addEventListener('click', () => {
-    $('#txtIngr').value = ''; pendingPhotos = []; $('#txtName').value = ''; pendingBarcode = '';
+    $('#txtIngr').value = ''; pendingPhotos = []; pendingSugars = null; $('#txtName').value = ''; pendingBarcode = '';
     $('#txtHint').textContent = ''; $('#textResult').replaceChildren();
     setOcrStatus('', false);
   });
@@ -917,12 +926,80 @@
     if (pendingOcrImg) { URL.revokeObjectURL(pendingOcrImg.url); pendingOcrImg = null; }
   }
 
+  // ---------- etiket uitlezen met AI ----------
+  const AI_LABEL_PROMPT = [
+    "Je leest ingrediëntenlijsten van foto's van voedseletiketten voor een FODMAP-app.",
+    'Geef ALLEEN een JSON-object terug, zonder uitleg: {"product": "<productnaam als die op de foto staat, anders leeg>", ' +
+      '"ingredients": "<de ingrediëntenlijst letterlijk, in de taal van het etiket (liefst Nederlands als die er staat), komma-gescheiden, zonder het woord \'Ingrediënten:\'>", ' +
+      '"sugars_100g": <getal of null>, "readable": <true/false>}',
+    'Regels: neem alleen de ingrediëntenlijst over, niet de voedingswaardetabel, bewaaradvies, allergenenzin ("kan sporen bevatten") of reclametekst. ' +
+      'Neem percentages en haakjes over. Verzin niets: onleesbare woorden laat je weg; is de lijst grotendeels onleesbaar of staat er geen ingrediëntenlijst op de foto, zet "readable" op false. ' +
+      '"sugars_100g" = suikers per 100 g uit de voedingswaardetabel als die leesbaar op de foto staat.'
+  ].join('\n');
+
+  async function readLabelWithAi(img) {
+    const c = imgToCanvas(img, 1600);
+    const b64 = c.toDataURL('image/jpeg', 0.8).split(',')[1];
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 45000);
+    try {
+      const res = await fetch(AI_ENDPOINT, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: ctrl.signal,
+        body: JSON.stringify({
+          model: AI_MODEL, max_tokens: 1000, system: AI_LABEL_PROMPT,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
+            { type: 'text', text: 'Lees de ingrediëntenlijst van dit etiket.' }
+          ] }]
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 429) throw new Error(data.error || 'daglimiet van de AI bereikt');
+      if (!res.ok) throw new Error(data.error || data.message || ('status ' + res.status));
+      const raw = (data.content || []).map(b => b.text || '').join('');
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error('onverwacht antwoord');
+      const out = JSON.parse(m[0]);
+      return {
+        readable: out.readable !== false && !!String(out.ingredients || '').trim(),
+        ingredients: String(out.ingredients || '').trim(),
+        product: String(out.product || '').trim(),
+        sugars: typeof out.sugars_100g === 'number' ? out.sugars_100g : null
+      };
+    } finally { clearTimeout(timer); }
+  }
+
+  function fillIngredients(text) {
+    const existing = $('#txtIngr').value.trim();
+    $('#txtIngr').value = existing ? existing + ', ' + text : text;
+    $('#txtIngr').focus();
+  }
+
   async function runOcr({ img, url }) {
     ocrBtns.forEach(b => b.disabled = true);
     blurWarnEl.hidden = true;
     setOcrStatus('Foto verwerken…', true);
+    let aiFailed = '';
     try {
       await capturePhoto(img);
+      if (navigator.onLine !== false) {
+        setOcrStatus('Etiket uitlezen met AI…', true);
+        try {
+          const r = await readLabelWithAi(img);
+          if (!r.readable) {
+            setOcrStatus('De ingrediëntenlijst is op deze foto niet te lezen. Maak een nieuwe foto: recht voor de ingrediëntenlijst, dichtbij, goed licht, geen glimmende plekken.', true);
+            return;
+          }
+          fillIngredients(r.ingredients);
+          if (r.product && !$('#txtName').value.trim()) $('#txtName').value = r.product;
+          if (r.sugars != null) pendingSugars = r.sugars;
+          setOcrStatus('Etiket gelezen met AI — controleer de lijst hieronder en corrigeer waar nodig voor je analyseert.', true);
+          return;
+        } catch (e) {
+          aiFailed = (e && e.name === 'AbortError') ? 'AI reageerde niet op tijd' : ('AI niet beschikbaar: ' + (e && e.message ? e.message : 'onbekende fout'));
+        }
+      }
+      setOcrStatus((aiFailed ? aiFailed + ' — ' : 'Geen internet — ') + 'gewone tekstherkenning wordt gebruikt…', true);
       const canvas = prepCanvas(img);
       const worker = await getOcrWorker();
       const { data } = await worker.recognize(canvas);
@@ -930,12 +1007,10 @@
       if (!text) {
         setOcrStatus('Geen tekst gevonden op de foto. Probeer een scherpere, rechte foto met goed licht.', true);
       } else {
-        const existing = $('#txtIngr').value.trim();
-        $('#txtIngr').value = existing ? existing + ', ' + text : text;
+        fillIngredients(text);
         setOcrStatus(looksGarbled(F.ingredientPart(text).text)
           ? 'De foto is niet goed leesbaar (de herkende tekst is grotendeels wartaal). Maak liever een nieuwe foto: recht voor de ingrediëntenlijst, dichtbij, goed licht, geen glimmende plekken.'
-          : 'Tekst herkend — controleer de lijst hieronder en corrigeer waar nodig voor je analyseert.', true);
-        $('#txtIngr').focus();
+          : 'Tekst herkend (zonder AI) — controleer de lijst hieronder en corrigeer waar nodig voor je analyseert.', true);
       }
     } catch (e) {
       setOcrStatus('Herkenning mislukt: ' + (e && e.message ? e.message : 'onbekende fout') + '. Typ de ingrediënten anders zelf over.', true);
@@ -1526,7 +1601,7 @@
     const text = $('#diaryInput').value.trim();
     pendingBarcode = '';
     $('#txtName').value = '';
-    $('#txtIngr').value = text; pendingPhotos = [];
+    $('#txtIngr').value = text; pendingPhotos = []; pendingSugars = null;
     $('#txtHint').textContent = '';
     $('#textResult').replaceChildren();
     showView('text');
@@ -1539,7 +1614,7 @@
   $('#diaryPhoto').addEventListener('click', () => {
     pendingBarcode = '';
     $('#txtName').value = '';
-    $('#txtIngr').value = ''; pendingPhotos = [];
+    $('#txtIngr').value = ''; pendingPhotos = []; pendingSugars = null;
     $('#txtHint').textContent = 'Maak een foto van het etiket — de tekst verschijnt hieronder om te controleren.';
     $('#textResult').replaceChildren();
     showView('text');
