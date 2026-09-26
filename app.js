@@ -50,7 +50,10 @@
   //          voedingswaardetabel. Harde/gerijpte kaas (Gouda, Edam, cheddar, 48+…) is niet meer
   //          rood door de melk; 0 g suikers per 100 g op het etiket = geen lactose. "Koemelk"
   //          wordt nu wel herkend in andere producten
-  const APP_VERSION = '2.8.1';
+  //  2.9.0 - Foto van het etiket wordt bij "Analyseer" automatisch bewaard bij de scan in
+  //          Historie (verkleind, in IndexedDB); miniatuur in de lijst en het resultaat,
+  //          tik op "Foto bekijken" voor de volledige foto. Verwijderen in Historie wist ook de foto
+  const APP_VERSION = '2.9.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -228,6 +231,7 @@
 
     const verdictKey = res.key;
     const acts = actions ? actions(res) : [];
+    if (data.photoId) acts.push(h('button', { class: 'btn ghost', type: 'button', onclick: () => openPhotoViewer(data.photoId) }, 'Foto bekijken'));
     if (data.text) {
       const diaryBtn = h('button', {
         class: 'btn full', type: 'button', onclick: () => {
@@ -260,11 +264,13 @@
     history.unshift({
       title: data.title || 'Product', brand: data.brand || '', image: data.image || '',
       barcode: data.barcode || '', text: data.text, verdict, t: Date.now(), per100: data.per100 || null,
-      portions: data.portions || null, categories: data.categories || ''
+      portions: data.portions || null, categories: data.categories || '', photoId: data.photoId || '',
+      source: data.source || ''
     });
     history = history.slice(0, 40);
     store.set('history', history);
     renderHistory();
+    cleanupPhotos();
   }
 
   function show(target, data, save, actions) {
@@ -287,7 +293,7 @@
   function goToText(barcode, title) {
     pendingBarcode = barcode || '';
     $('#txtName').value = title || '';
-    $('#txtIngr').value = '';
+    $('#txtIngr').value = ''; pendingPhotos = [];
     $('#txtHint').textContent = barcode ? 'Typ of plak de ingrediëntenlijst van de verpakking (barcode ' + barcode + ').' : '';
     $('#textResult').replaceChildren();
     showView('text');
@@ -298,7 +304,7 @@
   function goToPhoto(barcode, title) {
     pendingBarcode = barcode || '';
     $('#txtName').value = title || '';
-    $('#txtIngr').value = '';
+    $('#txtIngr').value = ''; pendingPhotos = [];
     $('#txtHint').textContent = 'Maak een foto van het etiket — de tekst verschijnt hieronder om te controleren.';
     $('#textResult').replaceChildren();
     showView('text');
@@ -697,11 +703,85 @@
   $('#productSearchOpen').addEventListener('click', openProductSearch);
   $('#productSearchClose').addEventListener('click', () => productSearchDialog.close());
 
+  // ---------- etiketfoto's (IndexedDB; localStorage is te klein voor foto's) ----------
+  // pendingPhotos: foto's van de huidige invoer, [{ blob, thumb }]. Wordt bewaard bij "Analyseer".
+  let pendingPhotos = [];
+  const photoDb = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) { reject(new Error('Geen IndexedDB')); return; }
+      const r = indexedDB.open('fodmap-photos', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('photos');
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    }));
+    const tx = (mode, fn) => open().then(db => new Promise((resolve, reject) => {
+      const t = db.transaction('photos', mode);
+      const req = fn(t.objectStore('photos'));
+      t.oncomplete = () => resolve(req ? req.result : undefined);
+      t.onerror = () => reject(t.error);
+    }));
+    return {
+      put: (id, blobs) => tx('readwrite', st => st.put(blobs, id)),
+      get: id => tx('readonly', st => st.get(id)),
+      del: id => tx('readwrite', st => st.delete(id)),
+      keys: () => tx('readonly', st => st.getAllKeys())
+    };
+  })();
+
+  // Verkleint naar een JPEG: groot genoeg om het etiket later nog te lezen, klein genoeg om veel te bewaren.
+  function imgToCanvas(img, maxSide) {
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.width * scale));
+    c.height = Math.max(1, Math.round(img.height * scale));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  }
+  async function capturePhoto(img) {
+    try {
+      const full = await new Promise(res => imgToCanvas(img, 1400).toBlob(b => res(b), 'image/jpeg', 0.72));
+      const thumb = imgToCanvas(img, 160).toDataURL('image/jpeg', 0.6);
+      if (full) pendingPhotos = pendingPhotos.concat([{ blob: full, thumb }]).slice(-4); // nieuwe array = nieuwe opslag
+    } catch (e) { /* foto bewaren is een extraatje; OCR gaat gewoon door */ }
+  }
+
+  // Ruimt foto's op die bij geen enkele scan in Historie meer horen.
+  function cleanupPhotos() {
+    const used = new Set(history.map(x => x.photoId).filter(Boolean));
+    photoDb.keys().then(keys => (keys || []).forEach(k => { if (!used.has(k)) photoDb.del(k); })).catch(() => {});
+  }
+
+  function openPhotoViewer(photoId) {
+    photoDb.get(photoId).then(blobs => {
+      if (!blobs || !blobs.length) { alert('Deze foto is niet meer beschikbaar.'); return; }
+      const urls = blobs.map(b => URL.createObjectURL(b));
+      const close = () => { urls.forEach(u => URL.revokeObjectURL(u)); ov.remove(); };
+      const ov = h('div', {
+        role: 'dialog', 'aria-label': 'Foto van het etiket', onclick: close,
+        style: 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.92);overflow:auto;padding:16px;display:flex;flex-direction:column;gap:12px;align-items:center'
+      },
+        h('button', { class: 'btn', type: 'button', style: 'align-self:flex-end', onclick: close }, 'Sluiten'),
+        ...urls.map(u => h('img', { src: u, alt: 'Foto van het etiket', style: 'max-width:100%;height:auto;border-radius:8px' })));
+      document.body.append(ov);
+    }).catch(() => alert('Foto kon niet geladen worden.'));
+  }
+
   // ---------- tekst ----------
   $('#txtGo').addEventListener('click', () => {
     const text = $('#txtIngr').value.trim();
     if (!text) { $('#txtHint').textContent = 'Voer eerst een ingrediëntenlijst in.'; return; }
     const data = { title: $('#txtName').value.trim() || 'Eigen ingrediëntenlijst', brand: '', image: '', barcode: pendingBarcode, text, source: 'Handmatig' };
+    if (pendingPhotos.length) {
+      // Opnieuw analyseren (bijv. na corrigeren) hergebruikt dezelfde opgeslagen foto's.
+      if (!pendingPhotos.id) {
+        pendingPhotos.id = 'p' + Date.now();
+        photoDb.put(pendingPhotos.id, pendingPhotos.map(x => x.blob)).catch(() => {});
+      }
+      data.photoId = pendingPhotos.id;
+      data.image = pendingPhotos[0].thumb;
+      data.source = 'Foto';
+    }
     show($('#textResult'), data, true);
   });
   $('#txtPaste').addEventListener('click', async () => {
@@ -709,7 +789,7 @@
     catch (e) { $('#txtHint').textContent = 'Plakken niet toegestaan: houd het tekstveld ingedrukt en kies Plakken.'; }
   });
   $('#txtClear').addEventListener('click', () => {
-    $('#txtIngr').value = ''; $('#txtName').value = ''; pendingBarcode = '';
+    $('#txtIngr').value = ''; pendingPhotos = []; $('#txtName').value = ''; pendingBarcode = '';
     $('#txtHint').textContent = ''; $('#textResult').replaceChildren();
     setOcrStatus('', false);
   });
@@ -822,6 +902,7 @@
     blurWarnEl.hidden = true;
     setOcrStatus('Foto verwerken…', true);
     try {
+      await capturePhoto(img);
       const canvas = prepCanvas(img);
       const worker = await getOcrWorker();
       const { data } = await worker.recognize(canvas);
@@ -912,17 +993,18 @@
       const k = res.key;
       return h('li', null,
         h('span', { class: 'dot ' + (k === 'high' ? 'high' : k === 'moderate' ? 'mod' : (k === 'low' || k === 'beerLow') ? 'low' : 'unsure'), style: 'margin-top:6px' }),
+        it.photoId && it.image ? h('img', { src: it.image, alt: '', style: 'width:40px;height:40px;object-fit:cover;border-radius:6px;flex:none' }) : null,
         h('button', { class: 'plain grow', onclick: () => show($('#histResult'), it, false) },
           h('b', { text: it.title }),
           h('div', { class: 'muted small', text: [it.brand, new Date(it.t).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })].filter(Boolean).join(' · ') })),
         h('button', { class: 'x', 'aria-label': 'Verwijderen', onclick: () => {
-          history.splice(i, 1); store.set('history', history); renderHistory();
+          history.splice(i, 1); store.set('history', history); renderHistory(); cleanupPhotos();
         } }, '×'));
     }));
   }
   $('#histClear').addEventListener('click', () => {
     if (!confirm('Alle gescande producten wissen?')) return;
-    history = []; store.set('history', history); renderHistory(); $('#histResult').replaceChildren();
+    history = []; store.set('history', history); renderHistory(); $('#histResult').replaceChildren(); cleanupPhotos();
   });
 
   // ---------- dagboek ----------
@@ -1422,7 +1504,7 @@
     const text = $('#diaryInput').value.trim();
     pendingBarcode = '';
     $('#txtName').value = '';
-    $('#txtIngr').value = text;
+    $('#txtIngr').value = text; pendingPhotos = [];
     $('#txtHint').textContent = '';
     $('#textResult').replaceChildren();
     showView('text');
@@ -1435,7 +1517,7 @@
   $('#diaryPhoto').addEventListener('click', () => {
     pendingBarcode = '';
     $('#txtName').value = '';
-    $('#txtIngr').value = '';
+    $('#txtIngr').value = ''; pendingPhotos = [];
     $('#txtHint').textContent = 'Maak een foto van het etiket — de tekst verschijnt hieronder om te controleren.';
     $('#textResult').replaceChildren();
     showView('text');
