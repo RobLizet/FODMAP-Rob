@@ -45,7 +45,12 @@
   //          worden bij het brouwen grotendeels vergist; Monash: laag tot ±375 ml). Tekst die
   //          geen ingrediëntenlijst is (voedingswaardetabel, wervende tekst van een foto) geeft
   //          niet meer ten onrechte groen, maar "Geen ingrediëntenlijst herkend"
-  const APP_VERSION = '2.8.0';
+  //  2.8.1 - Kaas: "wei" in "koeien die in de wei lopen" of "weidemelk" telt niet meer als wei
+  //          (whey); alleen de ingrediëntenlijst zelf wordt gecheckt, niet bewaaradvies of
+  //          voedingswaardetabel. Harde/gerijpte kaas (Gouda, Edam, cheddar, 48+…) is niet meer
+  //          rood door de melk; 0 g suikers per 100 g op het etiket = geen lactose. "Koemelk"
+  //          wordt nu wel herkend in andere producten
+  const APP_VERSION = '2.8.1';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -150,7 +155,8 @@
 
   // Eén centrale analyse: FODMAP-analyse plus correcties voor bier en onbruikbare tekst
   function analyzeData(data) {
-    const res = F.analyze(data.text, enabled());
+    const sugars = data.per100 && typeof data.per100.sugars === 'number' ? data.per100.sugars : undefined;
+    const res = F.analyze(data.text, enabled(), { context: [data.title, data.categories].filter(Boolean).join(' '), sugars });
     if (res.verdict === 'high' && isBeer(data)) {
       const note = 'Bij bier worden de fructanen uit de mout grotendeels vergist: laag tot ±375 ml.';
       let grainHit = false;
@@ -167,8 +173,9 @@
     }
     res.key = res.verdict;
     if (res.verdict === 'low') {
-      if (notIngredientList(data.text)) res.key = 'notList';
-      else if (looksUnreliable(data.text)) res.key = 'lowSuspect';
+      const part = F.ingredientPart(data.text).text;
+      if (notIngredientList(part)) res.key = 'notList';
+      else if (looksUnreliable(part)) res.key = 'lowSuspect';
     }
     return res;
   }
@@ -370,7 +377,9 @@
     let kcal = typeof nutr['energy-kcal_100g'] === 'number' ? nutr['energy-kcal_100g'] : null;
     if (kcal == null && typeof nutr.energy_100g === 'number') kcal = nutr.energy_100g / 4.184; // kJ -> kcal
     if (protein == null && kcal == null) return null;
-    return { protein, kcal };
+    const out = { protein, kcal };
+    if (typeof nutr.sugars_100g === 'number') out.sugars = nutr.sugars_100g;
+    return out;
   }
 
   // Huishoudmaten voor merkproducten, herkend aan naam/categorie. Eerste passende regel wint.

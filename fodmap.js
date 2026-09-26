@@ -103,7 +103,8 @@
 
     // ---------- Lactose ----------
     E('lactose', 'Melk / room / yoghurt / verse kaas', 'high', ['lactose'], {
-      exact: ['melk', 'milk', 'room', 'cream', 'wei', 'whey', 'lait', 'laits', 'milch'],
+      exact: ['melk', 'milk', 'room', 'cream', 'wei', 'whey', 'lait', 'laits', 'milch',
+        'koemelk', 'geitenmelk', 'schapenmelk', 'buffelmelk', 'weidemelk', 'rohmilch'],
       keys: ['lactose', 'melkpoeder', 'melksuiker', 'weipoeder', 'weiproduct', 'weiproteine', 'wei-eiwit', 'weieiwit',
         'whey protein', 'slagroom', 'kookroom', 'creme fraiche', 'roomkaas', 'ricotta', 'mascarpone', 'cottage',
         'huttenkase', 'milk powder', 'cream cheese', 'karnemelk', 'yoghurt', 'yogurt', 'kwark', 'kefir',
@@ -247,8 +248,73 @@
     'grune[\\s-]?bohn\\w*',
     'pommes?[\\s-]?de[\\s-]?terre\\w*', 'apfelsinen?',
     'lait[\\s-]?(de|d.)?[\\s-]?(coco|amande|avoine|soja|riz|noisette)\\w*',
-    'celeri[\\s-]?rave\\w*', 'knolselderij'
+    'celeri[\\s-]?rave\\w*', 'knolselderij',
+    // "wei" als grasland, niet als wei (whey): "koeien die in de wei lopen", "weidegang"
+    '(?<![\\p{L}\\p{N}])(in|op|de|het|naar|buiten)\\s+(de\\s+)?(\\p{L}+\\s+)?wei(?![\\p{L}\\p{N}])(?!\\s*(poeder|eiwit|proteine|product|permeaat)\\w*)',
+    '(?<![\\p{L}\\p{N}])wei(?=\\s+(lopen|loopt|liepen|grazen|graast|staan|staat|gaan|gaat))',
+    '(?<![\\p{L}\\p{N}])weide(gang|vogel|grond|land|seizoen|dag|en)?(?![\\p{L}\\p{N}])'
   ];
+
+  // Einde van de ingrediëntenlijst: alles hierna (bewaaradvies, voedingswaarde, wervende
+  // tekst over weidemelk) hoort er niet bij en mag geen treffers opleveren.
+  const END_MARKERS = [
+    'verpakt onder', 'beschermende atmosfeer', 'gekoeld bewaren', 'koel en droog', 'droog en koel',
+    'bewaren bij', 'bewaren beneden', 'na openen', 'na opening', 'ten minste houdbaar', 'tenminste houdbaar',
+    'houdbaar tot', 'gemiddelde voedingswaarde', 'voedingswaarde', 'voedingswaarden', 'nutrition',
+    'deze kaas is gemaakt', 'gemaakt van weidemelk', 'store in', 'best before', 'keep refrigerated'
+  ];
+  const HEADER_RE = /ingredi[eë]nten\s*[:\-]|ingredients\s*[:\-]|ingr[eé]dients\s*[:\-]|zutaten\s*[:\-]/i;
+
+  // Haalt het eigenlijke ingrediëntenlijstje uit een volledige etiket-tekst (OCR).
+  // cut = true als er iets is weggeknipt (kop gevonden of einde-markering na een opsomming).
+  function ingredientPart(text) {
+    const src = String(text || '');
+    let t = src, cut = false, header = false;
+    const h = t.match(HEADER_RE);
+    if (h) { t = t.slice(h.index + h[0].length); cut = true; header = true; }
+    const low = norm(t);
+    let end = -1;
+    END_MARKERS.forEach(m => {
+      const i = low.indexOf(m);
+      if (i > 0 && (end < 0 || i < end)) end = i;
+    });
+    if (end > 0) {
+      const before = t.slice(0, end);
+      if (header || (before.match(/,/g) || []).length >= 2) { t = before; cut = true; }
+    }
+    t = t.replace(/[\s.,;:]+$/, '');
+    return { text: cut ? t : src, cut };
+  }
+
+  const WB = '(?<![\\p{L}\\p{N}])', WA = '(?![\\p{L}\\p{N}])';
+  // Harde / gerijpte kaas: bij het rijpen verdwijnt de lactose vrijwel volledig.
+  const CHEESE_RE = new RegExp(WB + '(gouda|goudse|edam\\w*|leerdam\\w*|maasdam\\w*|leidse|beemster|old amsterdam|boerenkaas|' +
+    'cheddar|parmez\\w*|parmigiano|parmesan|grana padano|pecorino|emment\\w*|gruyere|comte|manchego|' +
+    'natuurgerijpt\\w*|(20|30|35|40|45|48|50|60)\\+)', 'u');
+  const CHEESE_WEAK_RE = new RegExp(WB + '(kaas|cheese|kase|fromage)' + WA, 'u');
+  const RIPE_RE = new RegExp(WB + '(stremsel|rennet|gerijpt\\w*|belegen|jong|oud|extra belegen|ripened|aged)' + WA, 'u');
+  const FRESH_RE = new RegExp(WB + '(roomkaas|smeerkaas|smeltkaas|verse kaas|zuivelspread|ricotta|mascarpone|cottage|huttenkase|' +
+    'kwark|quark|skyr|cream cheese|frischkase|mozzarella|burrata|feta|fromage frais|monchou|philadelphia|kaassaus|fondue|' +
+    'yoghurt|yogurt|pudding|vla)', 'u');
+  // Ingrediënten die in een gewone kaas horen; staat er iets anders in, dan is het een samengesteld product.
+  const CHEESE_OK_RE = /^(gepasteuriseerde |rauwe |volle |magere |halfvolle )*(koe|geiten|schapen|buffel|weide)?(melk|milk|milch|lait)|^(zee)?zout|^salt|^zuursel|^(kaas)?cultures?|^(microbieel |dierlijk |vegetarisch )*(stremsel|rennet|lab)|^ferment|^kleurstof|^(beta-?)?caroten|^annatto|^bixine|^e ?16\d|^conserveermiddel|^natriumnitra|^e ?25\d|^natamycine|^e ?235|^lysozym|^e ?1105|^calciumchloride|^e ?509|^komijn|^kummel|^fenegriek|^kruiden|^specerijen|^mosterdzaad|^peper|^brandnetel|^bieslook|^pesto/;
+  const PLAIN_MILK_RE = /^(koe|geiten|schapen|buffel|weide|voll|mager|roh|frisch)?(melk|milk|milch|lait|laits)$/;
+
+  function isHardCheese(fullNorm, tokens) {
+    if (FRESH_RE.test(fullNorm)) return false;
+    if (!(CHEESE_RE.test(fullNorm) || (CHEESE_WEAK_RE.test(fullNorm) && RIPE_RE.test(fullNorm)))) return false;
+    return tokens.every(t => {
+      const n = norm(t).replace(/[^\p{L}\p{N}+ -]/gu, ' ').replace(/\s+/g, ' ').trim();
+      if (!/\p{L}{3}/u.test(n)) return true; // OCR-ruis zoals "\:"
+      return CHEESE_OK_RE.test(n);
+    });
+  }
+
+  // Suikers per 100 g van het etiket (voedingswaardetabel in de OCR-tekst). null = onbekend.
+  function parseSugars(text) {
+    const m = norm(text).match(/(?:suikers?|sugars?|zucker|sucres)\s*[:\-]?\s*(<\s*)?(\d+(?:[.,]\d+)?)\s*g/u);
+    return m ? parseFloat(m[2].replace(',', '.')) : null;
+  }
 
   // ---------- helpers ----------
   function norm(s) {
@@ -298,10 +364,21 @@
 
   const LACTASE_RE = new RegExp(B + 'lactase' + A, 'u');
 
-  function analyze(text, enabled) {
-    const cleaned = cleanText(text);
+  // opts.context = productnaam/categorie; opts.sugars = suikers per 100 g (Open Food Facts)
+  function analyze(text, enabled, opts) {
+    opts = opts || {};
+    const part = ingredientPart(text);
+    const cleaned = cleanText(part.text);
     if (!cleaned) return { verdict: 'unknown', total: 0, hits: [], items: [] };
     const tokens = splitIngredients(cleaned);
+    const fullNorm = norm([opts.context, text].filter(Boolean).join(' '));
+    // Harde kaas: de melk als basisingrediënt geeft geen lactose meer (rijping).
+    const hardCheese = isHardCheese(fullNorm, tokens);
+    // 0 g suikers per 100 g = ook (vrijwel) 0 g lactose, want lactose is een suiker.
+    let sugars = typeof opts.sugars === 'number' ? opts.sugars : parseSugars(text);
+    const noSugar = sugars != null && sugars < 0.5;
+    const CHEESE_NOTE = 'Harde/gerijpte kaas: de lactose uit de melk verdwijnt bij het rijpen, dus geen probleem.';
+    const SUGAR_NOTE = 'Het etiket vermeldt (vrijwel) 0 g suikers per 100 g, dus ook nauwelijks lactose.';
     const en = enabled || null; // Set met groepsnamen, of null = alles
     // Melk/room met toegevoegd lactase-enzym is enzymatisch lactosevrij gemaakt,
     // ook als het ingrediëntenlijstje het woord "lactosevrij" zelf niet gebruikt.
@@ -315,8 +392,16 @@
         const m = tn.match(e._re);
         if (!m) continue;
         let active = e.level === 'unsure' || !en || e.groups.some(g => en.has(g));
+        let term = m[0].trim(), note = e.note || '';
+        const lactoseOnly = e.groups.length === 1 && e.groups[0] === 'lactose';
         if (e.id === 'lactose' && hasLactase) active = false;
-        hits.push({ id: e.id, name: e.name, level: e.level, groups: e.groups, term: m[0].trim(), note: e.note || '', active });
+        if (active && e.id === 'lactose' && hardCheese) {
+          const other = m.map(x => x.trim()).filter(x => !PLAIN_MILK_RE.test(x));
+          if (other.length) term = other[0];
+          else { active = false; note = CHEESE_NOTE; }
+        }
+        if (active && lactoseOnly && noSugar) { active = false; note = SUGAR_NOTE; }
+        hits.push({ id: e.id, name: e.name, level: e.level, groups: e.groups, term, note, active });
       }
       let level = 'none';
       hits.forEach(h => {
@@ -345,7 +430,7 @@
     if (hits.some(h => h.level === 'high')) verdict = 'high';
     else if (hits.some(h => h.level === 'moderate')) verdict = 'moderate';
 
-    return { verdict, total: tokens.length, hits, items };
+    return { verdict, total: tokens.length, hits, items, hardCheese, noSugar };
   }
 
   function search(q) {
@@ -366,7 +451,7 @@
     return rows;
   }
 
-  const api = { GROUPS, GROUP_INFO, DB, LOW, analyze, search, norm, cleanText, splitIngredients };
+  const api = { GROUPS, GROUP_INFO, DB, LOW, analyze, search, norm, cleanText, splitIngredients, ingredientPart, parseSugars };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.FODMAP = api;
 })(typeof window !== 'undefined' ? window : globalThis);
