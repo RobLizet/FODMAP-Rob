@@ -61,7 +61,9 @@
   //          voedingstabel/reclametekst), vult de productnaam in en leest suikers per 100 g.
   //          Onleesbare foto -> melding om opnieuw te fotograferen. Geen internet of AI-fout ->
   //          automatisch terug naar de oude tekstherkenning (Tesseract)
-  const APP_VERSION = '3.0.0';
+  //  3.0.1 - AI-uitlezing geeft de ingrediëntenlijst altijd in het Nederlands (vertaalt Poolse,
+  //          Italiaanse e.d. etiketten), zodat bijv. "mąka pszenna" als tarwebloem herkend wordt
+  const APP_VERSION = '3.0.1';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -930,8 +932,11 @@
   const AI_LABEL_PROMPT = [
     "Je leest ingrediëntenlijsten van foto's van voedseletiketten voor een FODMAP-app.",
     'Geef ALLEEN een JSON-object terug, zonder uitleg: {"product": "<productnaam als die op de foto staat, anders leeg>", ' +
-      '"ingredients": "<de ingrediëntenlijst letterlijk, in de taal van het etiket (liefst Nederlands als die er staat), komma-gescheiden, zonder het woord \'Ingrediënten:\'>", ' +
+      '"ingredients": "<de ingrediëntenlijst in het NEDERLANDS, komma-gescheiden, zonder het woord \'Ingrediënten:\'>", ' +
       '"sugars_100g": <getal of null>, "readable": <true/false>}',
+    'Taal: staat er een Nederlandse ingrediëntenlijst op de foto, neem die dan letterlijk over. Staat die er niet (bijv. alleen Pools, Italiaans, Spaans, Engels of Duits), ' +
+      'vertaal dan elk ingrediënt nauwkeurig en letterlijk naar het Nederlands (bijv. "mąka pszenna" -> "tarwebloem", "syrop glukozowy" -> "glucosestroop", "cebula" -> "ui"); vat niets samen en laat niets weg. ' +
+      'Kies bij meertalige etiketten altijd de Nederlandse lijst, anders de lijst die het best leesbaar is.',
     'Regels: neem alleen de ingrediëntenlijst over, niet de voedingswaardetabel, bewaaradvies, allergenenzin ("kan sporen bevatten") of reclametekst. ' +
       'Neem percentages en haakjes over. Verzin niets: onleesbare woorden laat je weg; is de lijst grotendeels onleesbaar of staat er geen ingrediëntenlijst op de foto, zet "readable" op false. ' +
       '"sugars_100g" = suikers per 100 g uit de voedingswaardetabel als die leesbaar op de foto staat.'
