@@ -63,11 +63,14 @@
   //          automatisch terug naar de oude tekstherkenning (Tesseract)
   //  3.0.1 - AI-uitlezing geeft de ingrediëntenlijst altijd in het Nederlands (vertaalt Poolse,
   //          Italiaanse e.d. etiketten), zodat bijv. "mąka pszenna" als tarwebloem herkend wordt
-  const APP_VERSION = '3.0.1';
+  //  3.0.2 - AI via eigen route /fodmap-ai (werkte niet meer sinds de login-eis op /anthropic)
+  const APP_VERSION = '3.0.2';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
-  const AI_ENDPOINT = 'https://toto-proxy.zweetzakken.workers.dev/anthropic';
+  // 3.0.2: eigen route /fodmap-ai (sinds 29-09 eist /anthropic een WedjeBetje-login). Geen login nodig,
+  // de worker accepteert alleen verzoeken vanaf deze app (github.io) met een daglimiet.
+  const AI_ENDPOINT = 'https://api.promatchxi.app/fodmap-ai';
   const AI_MODEL = 'claude-sonnet-4-6';
   const AI_SYSTEM_PROMPT = [
     'Je bent een vriendelijke, beknopte FODMAP- en voedingsassistent in een Nederlandse app.',
