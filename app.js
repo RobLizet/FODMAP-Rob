@@ -64,7 +64,7 @@
   //  3.0.1 - AI-uitlezing geeft de ingrediëntenlijst altijd in het Nederlands (vertaalt Poolse,
   //          Italiaanse e.d. etiketten), zodat bijv. "mąka pszenna" als tarwebloem herkend wordt
   //  3.0.2 - AI via eigen route /fodmap-ai (werkte niet meer sinds de login-eis op /anthropic)
-  const APP_VERSION = '3.0.2';
+  const APP_VERSION = '3.1.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -1153,7 +1153,7 @@
   }
 
   function addDiaryItem(entry) {
-    const key = todayKey();
+    const key = entry.dateKey && /^\d{4}-\d{2}-\d{2}$/.test(entry.dateKey) ? entry.dateKey : todayKey();
     if (!diary[key]) diary[key] = { items: [], note: '' };
     const num = v => typeof v === 'number' && !isNaN(v) ? v : null;
     diary[key].items.push({
@@ -1274,6 +1274,31 @@
     return el ? el.dataset.meal : 'snack';
   }
   $$('#diaryMealChips .chip').forEach(c => c.addEventListener('click', () => selectMealChip(c.dataset.meal)));
+
+  // Datumkeuze: vandaag/gisteren of een eerdere dag (bijv. iets vergeten in te vullen)
+  const diaryDateInput = $('#diaryDateInput');
+  function daysAgoKey(n) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - n); return dateKey(d); }
+  function setDiaryDate(key) {
+    if (!key || key > todayKey()) key = todayKey();
+    diaryDateInput.max = todayKey();
+    diaryDateInput.value = key;
+    let chipHit = false;
+    $$('#diaryDateChips .chip').forEach(c => {
+      const on = daysAgoKey(+c.dataset.day) === key;
+      if (on) chipHit = true;
+      c.setAttribute('aria-pressed', String(on));
+    });
+    diaryDateInput.classList.toggle('on', !chipHit);
+  }
+  function getDiaryDate() {
+    const v = diaryDateInput.value;
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) && v <= todayKey() ? v : todayKey();
+  }
+  function findItemDayKey(it) {
+    return Object.keys(diary).find(k => diary[k] && diary[k].items.includes(it)) || todayKey();
+  }
+  $$('#diaryDateChips .chip').forEach(c => c.addEventListener('click', () => setDiaryDate(daysAgoKey(+c.dataset.day))));
+  diaryDateInput.addEventListener('change', () => setDiaryDate(diaryDateInput.value));
 
   function setupUnits(portions) {
     dlgUnits = (portions || [])
@@ -1407,6 +1432,7 @@
     $('#diaryAddTitle').textContent = 'Toevoegen aan dagboek';
     $('#diaryAddConfirm').textContent = 'Toevoegen';
     setDiaryName(text);
+    setDiaryDate(todayKey());
     selectMealChip(guessMeal());
     setupUnits(portions);
     // Met portie-eenheden: standaard "1 snee/stuk/…"; alleen gram: 100 g (of leeg bij handmatig)
@@ -1434,6 +1460,7 @@
     $('#diaryAddTitle').textContent = 'Item wijzigen';
     $('#diaryAddConfirm').textContent = 'Opslaan';
     setDiaryName(it.text);
+    setDiaryDate(findItemDayKey(it));
     selectMealChip(it.meal || 'snack');
     if (it.per100 && it.source !== 'Basisproduct') {
       const aug = augmentPortions(it.portions, it.text);
@@ -1485,6 +1512,13 @@
     if (diaryEditCtx) {
       touchFavorite(Object.assign({}, diaryEditCtx, amt));
       Object.assign(diaryEditCtx, amt, nut, { meal: getSelectedMeal(), text: getDiaryName() });
+      // Andere datum gekozen? Item verplaatsen naar die dag
+      const fromKey = findItemDayKey(diaryEditCtx), toKey = getDiaryDate();
+      if (fromKey !== toKey && diary[fromKey]) {
+        diary[fromKey].items = diary[fromKey].items.filter(x => x !== diaryEditCtx);
+        if (!diary[toKey]) diary[toKey] = { items: [], note: '' };
+        diary[toKey].items.push(diaryEditCtx);
+      }
       store.set('diary', diary);
       diaryEditCtx = null;
       diaryAddDialog.close();
@@ -1494,7 +1528,8 @@
     if (!diaryAddCtx) return;
     const entry = Object.assign({
       text: getDiaryName(), verdict: diaryAddCtx.verdict, source: diaryAddCtx.source, brand: diaryAddCtx.brand,
-      meal: getSelectedMeal(), per100: diaryAddCtx.per100, portions: diaryAddCtx.portions
+      meal: getSelectedMeal(), per100: diaryAddCtx.per100, portions: diaryAddCtx.portions,
+      dateKey: getDiaryDate()
     }, amt, nut);
     addDiaryItem(entry);
     touchFavorite(Object.assign({}, entry, { text: diaryAddCtx.text }));

@@ -141,6 +141,9 @@ label.lbl{display:block;font-size:13px;font-weight:600;color:var(--muted);margin
 .chips{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
 .chip{border:1px solid var(--line-strong);background:var(--card);border-radius:99px;padding:7px 14px;font-size:14px;font-weight:500;cursor:pointer}
 .chip[aria-pressed=true]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.date-chips{align-items:center}
+.date-in{flex:1;min-width:130px;width:auto;margin:0;padding:6px 10px;border-radius:99px;font-size:14px}
+.date-in.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 
 /* dagboek */
 ".day-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
@@ -420,6 +423,12 @@ dialog .signature{margin:18px 0 4px;font-size:24px}
   </div>
   <label class="lbl" for="diaryAddProduct" style="margin-top:4px">Naam</label>
   <input id="diaryAddProduct" class="dlg-product" type="text" autocomplete="off" enterkeyhint="done" maxlength="120" placeholder="bijv. havermout met banaan">
+  <label class="lbl" for="diaryDateInput">Datum</label>
+  <div class="chips date-chips" id="diaryDateChips">
+    <button type="button" class="chip" data-day="0">Vandaag</button>
+    <button type="button" class="chip" data-day="1">Gisteren</button>
+    <input id="diaryDateInput" class="date-in" type="date" aria-label="Kies een datum">
+  </div>
   <label class="lbl">Maaltijd</label>
   <div class="chips" id="diaryMealChips">
     <button type="button" class="chip" data-meal="ontbijt">Ontbijt</button>
