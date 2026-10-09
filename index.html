@@ -217,6 +217,28 @@ input.dlg-product{width:100%;min-height:46px;font-family:inherit}
 .cmp-food b{color:var(--fg);font-weight:600}
 .cmp-food .dot{display:inline-block;width:8px;height:8px;margin:0 4px 1px 0;vertical-align:middle}
 
+#printArea{display:none}
+@media print{
+  @page{size:A4;margin:14mm 12mm}
+  html,body{background:#fff!important;color:#111!important}
+  body.printing>*:not(#printArea){display:none!important}
+  body.printing #printArea{display:block!important}
+  #printArea{font:11pt/1.4 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #printArea h1{font-size:18pt;margin:0 0 2pt}
+  #printArea .p-meta{color:#555;font-size:10pt;margin:0 0 10pt}
+  #printArea table{width:100%;border-collapse:collapse}
+  #printArea th{text-align:left;font-size:9pt;text-transform:uppercase;letter-spacing:.04em;color:#555;border-bottom:1.5pt solid #111;padding:4pt 6pt}
+  #printArea td{vertical-align:top;border-bottom:.5pt solid #bbb;padding:6pt;font-size:10pt}
+  #printArea tr{break-inside:avoid;page-break-inside:avoid}
+  #printArea td.p-date{width:22%;font-weight:700;white-space:nowrap}
+  #printArea td.p-note{width:34%;white-space:pre-wrap}
+  #printArea .p-meal{margin:0 0 2pt}
+  #printArea .p-meal b{font-weight:700}
+  #printArea .p-dot{display:inline-block;width:7pt;height:7pt;border-radius:50%;margin:0 3pt 0 0;vertical-align:baseline;background:#9aa3ad}
+  #printArea .p-dot.high{background:#d64545}#printArea .p-dot.mod{background:#e2a33b}#printArea .p-dot.low{background:#2f9e5b}
+  #printArea .p-legend{margin-top:10pt;font-size:9pt;color:#555}
+}
+
 /* AI-chat */
 #aiChatDialog[open]{display:flex;flex-direction:column;max-height:80dvh;height:min(560px,80dvh);padding:14px;margin-top:5dvh;margin-bottom:auto}
 .ai-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex:none}
@@ -481,6 +503,8 @@ dialog .signature{margin:18px 0 4px;font-size:24px}
   </div>
 </dialog>
 
+<div id="printArea" aria-hidden="true"></div>
+
 <dialog id="complaintsDialog">
   <div class="ai-head">
     <h2>Klachtenoverzicht</h2>
@@ -496,7 +520,8 @@ dialog .signature{margin:18px 0 4px;font-size:24px}
   <div id="complaintsList" class="cmp-list"></div>
   <p id="complaintsStatus" class="msg" hidden aria-live="polite"></p>
   <div class="actions" style="margin-top:10px;flex:none">
-    <button id="complaintsShare" class="btn" type="button">Delen / kopiëren</button>
+    <button id="complaintsPrint" class="btn" type="button">Printen / PDF</button>
+    <button id="complaintsShare" class="btn ghost" type="button">Delen als tekst</button>
   </div>
 </dialog>
 

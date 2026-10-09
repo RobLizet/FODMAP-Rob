@@ -64,7 +64,7 @@
   //  3.0.1 - AI-uitlezing geeft de ingrediëntenlijst altijd in het Nederlands (vertaalt Poolse,
   //          Italiaanse e.d. etiketten), zodat bijv. "mąka pszenna" als tarwebloem herkend wordt
   //  3.0.2 - AI via eigen route /fodmap-ai (werkte niet meer sinds de login-eis op /anthropic)
-  const APP_VERSION = '3.2.2';
+  const APP_VERSION = '3.3.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -1655,9 +1655,21 @@
   }
   function foodByMeal(day) {
     return MEAL_ORDER.map(meal => {
-      const items = day.items.filter(it => (it.meal || 'snack') === meal);
-      return items.length ? { meal, items } : null;
+      const raw = day.items.filter(it => (it.meal || 'snack') === meal);
+      if (!raw.length) return null;
+      // zelfde product + hoeveelheid samenvoegen: "Koffie (13 g) ×3"
+      const groups = [];
+      raw.forEach(it => {
+        const amt = itemAmountText(it);
+        const g = groups.find(x => x.text === it.text && x.amt === amt);
+        if (g) g.n++;
+        else groups.push({ text: it.text, amt, verdict: it.verdict, n: 1 });
+      });
+      return { meal, items: groups };
     }).filter(Boolean);
+  }
+  function foodLabel(g) {
+    return g.text + (g.amt ? ' (' + g.amt + ')' : '') + (g.n > 1 ? ' ×' + g.n : '');
   }
   function updateComplaintsSub() {
     const sub = $('#complaintsSub');
@@ -1675,6 +1687,7 @@
       ? keys.length + (keys.length === 1 ? ' dag' : ' dagen') + ' met notities · ' + logged + ' dagen bijgehouden'
       : '';
     $('#complaintsShare').disabled = !keys.length;
+    $('#complaintsPrint').disabled = !keys.length;
     if (!keys.length) {
       $('#complaintsList').replaceChildren(h('p', { class: 'muted small' }, 'Geen notities in deze periode. Schrijf klachten in het notitieveld onder een dag in je dagboek.'));
       return;
@@ -1686,7 +1699,7 @@
             h('b', { text: MEAL_LABELS[g.meal] + ': ' }),
             g.items.map((it, i) => [
               h('span', { class: 'dot ' + (LV[it.verdict] || 'unsure') }),
-              it.text + (itemAmountText(it) ? ' (' + itemAmountText(it) + ')' : '') + (i < g.items.length - 1 ? ', ' : '')
+              foodLabel(it) + (i < g.items.length - 1 ? ', ' : '')
             ]).flat())))
         : null;
       return h('div', { class: 'cmp-day' },
@@ -1708,7 +1721,7 @@
       s += '\n' + plainDayLabel(key) + '\n' + day.note.trim() + '\n';
       if (showFood && day.items.length) {
         foodByMeal(day).forEach(g => {
-          s += '  ' + MEAL_LABELS[g.meal] + ': ' + g.items.map(it => it.text + (itemAmountText(it) ? ' (' + itemAmountText(it) + ')' : '')).join(', ') + '\n';
+          s += '  ' + MEAL_LABELS[g.meal] + ': ' + g.items.map(foodLabel).join(', ') + '\n';
         });
       }
     });
@@ -1738,6 +1751,60 @@
   cmpDialog.addEventListener('click', e => { if (e.target === cmpDialog) cmpDialog.close(); });
   $$('#complaintsRange .chip').forEach(c => c.addEventListener('click', () => { cmpDays = Number(c.dataset.days); renderComplaints(); }));
   $('#complaintsShowFood').addEventListener('change', renderComplaints);
+  function buildPrintArea() {
+    const showFood = $('#complaintsShowFood').checked;
+    const keys = complaintDays(cmpDays).slice().reverse(); // oud → nieuw, zoals een logboek
+    const period = cmpDays ? 'Laatste ' + (cmpDays / 7) + ' weken' : 'Alle notities';
+    const range = keys.length ? plainDayLabel(keys[0]) + ' t/m ' + plainDayLabel(keys[keys.length - 1]) : '';
+    const made = new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
+    $('#printArea').replaceChildren(
+      h('h1', { text: 'Klachtenoverzicht' }),
+      h('p', { class: 'p-meta', text: [period + (range ? ' (' + range + ')' : ''), keys.length + ' dagen met notities, ' + loggedDays(cmpDays) + ' dagen bijgehouden', 'Gemaakt op ' + made].join(' · ') }),
+      h('table', null,
+        h('thead', null, h('tr', null,
+          h('th', { text: 'Datum' }), h('th', { text: 'Klachten / notitie' }), showFood ? h('th', { text: 'Gegeten' }) : null)),
+        h('tbody', null, keys.map(key => {
+          const day = diary[key];
+          const [y, m, d] = key.split('-').map(Number);
+          const dl = new Date(y, m - 1, d).toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+          return h('tr', null,
+            h('td', { class: 'p-date', text: dl }),
+            h('td', { class: 'p-note', text: day.note.trim() }),
+            showFood ? h('td', null, day.items.length
+              ? foodByMeal(day).map(g => h('div', { class: 'p-meal' },
+                  h('b', { text: MEAL_LABELS[g.meal] + ': ' }),
+                  g.items.map((it, i) => [h('span', { class: 'p-dot ' + (LV[it.verdict] || 'unsure') }), foodLabel(it) + (i < g.items.length - 1 ? ', ' : '')]).flat()))
+              : '–') : null);
+        }))),
+      showFood ? h('p', { class: 'p-legend' },
+        h('span', { class: 'p-dot low' }), 'laag FODMAP  ',
+        h('span', { class: 'p-dot mod' }), ' matig  ',
+        h('span', { class: 'p-dot high' }), ' hoog FODMAP  ',
+        h('span', { class: 'p-dot' }), ' niet gecontroleerd') : null);
+  }
+
+  let reopenAfterPrint = false;
+  $('#complaintsPrint').addEventListener('click', () => {
+    buildPrintArea();
+    reopenAfterPrint = cmpDialog.open;
+    if (cmpDialog.open) cmpDialog.close(); // dialoog ligt anders over de afdruk heen
+    document.body.classList.add('printing');
+    const prevTitle = document.title;
+    document.title = 'Klachtenoverzicht ' + todayKey(); // wordt de PDF-bestandsnaam
+    setTimeout(() => {
+      window.print();
+      // sommige browsers blokkeren print() niet → afterprint vangt het op; fallback na korte tijd
+      setTimeout(() => { if (document.body.classList.contains('printing') && !matchMedia('print').matches) afterPrint(); }, 1500);
+    }, 60);
+    function afterPrint() {
+      if (!document.body.classList.contains('printing')) return;
+      document.title = prevTitle;
+      document.body.classList.remove('printing');
+      if (reopenAfterPrint) { reopenAfterPrint = false; cmpDialog.showModal(); }
+    }
+    window.addEventListener('afterprint', afterPrint, { once: true });
+  });
+
   $('#complaintsShare').addEventListener('click', async () => {
     const text = complaintsText();
     const status = $('#complaintsStatus');
