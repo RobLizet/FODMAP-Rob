@@ -64,7 +64,7 @@
   //  3.0.1 - AI-uitlezing geeft de ingrediëntenlijst altijd in het Nederlands (vertaalt Poolse,
   //          Italiaanse e.d. etiketten), zodat bijv. "mąka pszenna" als tarwebloem herkend wordt
   //  3.0.2 - AI via eigen route /fodmap-ai (werkte niet meer sinds de login-eis op /anthropic)
-  const APP_VERSION = '3.1.0';
+  const APP_VERSION = '3.2.0';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -1541,9 +1541,11 @@
     if (!diary[key]) diary[key] = { items: [], note: '' };
     diary[key].note = note;
     store.set('diary', diary);
+    updateComplaintsSub();
   }
 
   function renderDiary() {
+    updateComplaintsSub();
     const list = $('#diaryList');
     const keys = Array.from(new Set([todayKey(), ...Object.keys(diary)])).sort().reverse();
     const visible = keys.filter(k => k === todayKey() || (diary[k] && (diary[k].items.length || (diary[k].note || '').trim())));
@@ -1633,6 +1635,123 @@
         noteSaved);
     }));
   }
+
+  // ---------- Klachtenoverzicht (voor diëtiste) ----------
+  const cmpDialog = $('#complaintsDialog');
+  let cmpDays = 28;
+
+  function complaintDays(days) {
+    const minKey = days ? dateKey(new Date(Date.now() - (days - 1) * 86400000)) : '';
+    return Object.keys(diary).filter(k => k >= minKey && diary[k] && (diary[k].note || '').trim()).sort().reverse();
+  }
+  function loggedDays(days) {
+    const minKey = days ? dateKey(new Date(Date.now() - (days - 1) * 86400000)) : '';
+    return Object.keys(diary).filter(k => k >= minKey && diary[k] && (diary[k].items.length || (diary[k].note || '').trim())).length;
+  }
+  function plainDayLabel(key) {
+    const [y, m, d] = key.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short' });
+  }
+  function foodByMeal(day) {
+    return MEAL_ORDER.map(meal => {
+      const items = day.items.filter(it => (it.meal || 'snack') === meal);
+      return items.length ? { meal, items } : null;
+    }).filter(Boolean);
+  }
+  function updateComplaintsSub() {
+    const sub = $('#complaintsSub');
+    if (!sub) return;
+    const n = complaintDays(28).length;
+    sub.textContent = n ? n + (n === 1 ? ' dag' : ' dagen') + ' met notities in de laatste 4 weken' : 'Al je notities op een rij, voor je diëtiste';
+  }
+
+  function renderComplaints() {
+    $$('#complaintsRange .chip').forEach(c => c.setAttribute('aria-pressed', String(Number(c.dataset.days) === cmpDays)));
+    const showFood = $('#complaintsShowFood').checked;
+    const keys = complaintDays(cmpDays);
+    const logged = loggedDays(cmpDays);
+    $('#complaintsSummary').textContent = keys.length
+      ? keys.length + (keys.length === 1 ? ' dag' : ' dagen') + ' met notities · ' + logged + ' dagen bijgehouden'
+      : '';
+    $('#complaintsShare').disabled = !keys.length;
+    if (!keys.length) {
+      $('#complaintsList').replaceChildren(h('p', { class: 'muted small' }, 'Geen notities in deze periode. Schrijf klachten in het notitieveld onder een dag in je dagboek.'));
+      return;
+    }
+    $('#complaintsList').replaceChildren(...keys.map(key => {
+      const day = diary[key];
+      const food = showFood && day.items.length
+        ? h('div', { class: 'cmp-food' }, foodByMeal(day).map(g => h('div', null,
+            h('b', { text: MEAL_LABELS[g.meal] + ': ' }),
+            g.items.map((it, i) => [
+              h('span', { class: 'dot ' + (LV[it.verdict] || 'unsure') }),
+              it.text + (itemAmountText(it) ? ' (' + itemAmountText(it) + ')' : '') + (i < g.items.length - 1 ? ', ' : '')
+            ]).flat())))
+        : null;
+      return h('div', { class: 'cmp-day' },
+        h('div', { class: 'cmp-date' },
+          h('span', { text: dayHeading(key) }),
+          h('button', { type: 'button', onclick: () => gotoDiaryDay(key) }, 'Bewerk')),
+        h('div', { class: 'cmp-note', text: day.note.trim() }),
+        food);
+    }));
+  }
+
+  function complaintsText() {
+    const showFood = $('#complaintsShowFood').checked;
+    const keys = complaintDays(cmpDays);
+    const period = cmpDays ? 'laatste ' + (cmpDays / 7) + ' weken' : 'alle notities';
+    let s = 'Klachtenoverzicht (' + period + ')\n' + keys.length + ' dagen met notities, ' + loggedDays(cmpDays) + ' dagen bijgehouden\n';
+    keys.slice().reverse().forEach(key => {
+      const day = diary[key];
+      s += '\n' + plainDayLabel(key) + '\n' + day.note.trim() + '\n';
+      if (showFood && day.items.length) {
+        foodByMeal(day).forEach(g => {
+          s += '  ' + MEAL_LABELS[g.meal] + ': ' + g.items.map(it => it.text + (itemAmountText(it) ? ' (' + itemAmountText(it) + ')' : '')).join(', ') + '\n';
+        });
+      }
+    });
+    return s;
+  }
+
+  function gotoDiaryDay(key) {
+    cmpDialog.close();
+    showView('diary');
+    setTimeout(() => {
+      const idx = Array.from($$('#diaryList .day-title')).findIndex(t => t.textContent === dayHeading(key));
+      const card = $$('#diaryList .day')[idx];
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const ta = card.querySelector('textarea.note');
+        if (ta) setTimeout(() => ta.focus({ preventScroll: true }), 400);
+      }
+    }, 50);
+  }
+
+  $('#complaintsOpen').addEventListener('click', () => {
+    $('#complaintsStatus').hidden = true;
+    renderComplaints();
+    cmpDialog.showModal();
+  });
+  $('#complaintsClose').addEventListener('click', () => cmpDialog.close());
+  cmpDialog.addEventListener('click', e => { if (e.target === cmpDialog) cmpDialog.close(); });
+  $$('#complaintsRange .chip').forEach(c => c.addEventListener('click', () => { cmpDays = Number(c.dataset.days); renderComplaints(); }));
+  $('#complaintsShowFood').addEventListener('change', renderComplaints);
+  $('#complaintsShare').addEventListener('click', async () => {
+    const text = complaintsText();
+    const status = $('#complaintsStatus');
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Klachtenoverzicht', text }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      status.textContent = 'Gekopieerd — plak het in een mail of bericht aan je diëtiste.';
+    } catch (e) {
+      status.textContent = 'Kopiëren lukte niet op dit toestel.';
+    }
+    status.hidden = false;
+  });
 
   $('#diaryAdd').addEventListener('click', () => {
     const text = $('#diaryInput').value.trim();

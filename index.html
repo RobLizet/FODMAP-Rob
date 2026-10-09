@@ -200,11 +200,28 @@ input.dlg-product{width:100%;min-height:46px;font-family:inherit}
 .fav-btn[aria-pressed=true]{color:#e0485f}
 .fav-btn[aria-pressed=true] svg{fill:currentColor}
 
+/* Klachtenoverzicht */
+.complaints-btn{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;font:inherit;color:var(--fg)}
+.complaints-btn svg{width:34px;height:34px;padding:7px;border-radius:10px;background:var(--accent-soft);stroke:var(--accent);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.complaints-btn .grow{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.complaints-btn .chev{font-size:24px;color:var(--muted);line-height:1}
+#complaintsDialog[open]{display:flex;flex-direction:column;max-height:86dvh;padding:14px;margin-top:4dvh;margin-bottom:auto}
+.cmp-toggle{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);flex:none}
+.cmp-toggle input{width:18px;height:18px;min-height:0;margin:0}
+.cmp-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:10px;min-height:80px}
+.cmp-day{border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--bg)}
+.cmp-date{font-size:13px;font-weight:700;color:var(--muted);margin-bottom:4px;display:flex;justify-content:space-between;gap:8px}
+.cmp-date button{background:none;border:0;color:var(--accent);font-size:13px;font-weight:600;padding:0;cursor:pointer}
+.cmp-note{font-size:15px;line-height:1.45;white-space:pre-wrap}
+.cmp-food{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:13px;line-height:1.5;color:var(--muted)}
+.cmp-food b{color:var(--fg);font-weight:600}
+.cmp-food .dot{display:inline-block;width:8px;height:8px;margin:0 4px 1px 0;vertical-align:middle}
+
 /* AI-chat */
 #aiChatDialog[open]{display:flex;flex-direction:column;max-height:80dvh;height:min(560px,80dvh);padding:14px;margin-top:5dvh;margin-bottom:auto}
 .ai-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex:none}
 .ai-head h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
-.ai-head button#aiChatClose,.ai-head button#productSearchClose,.ai-head button#diaryAddClose{background:none;border:0;color:var(--muted);font-size:26px;line-height:1;padding:0 6px;cursor:pointer}
+.ai-head button#aiChatClose,.ai-head button#productSearchClose,.ai-head button#diaryAddClose,.ai-head button#complaintsClose{background:none;border:0;color:var(--muted);font-size:26px;line-height:1;padding:0 6px;cursor:pointer}
 .ai-msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;-webkit-overflow-scrolling:touch}
 .ai-msg{max-width:88%;padding:9px 12px;border-radius:14px;font-size:14.5px;line-height:1.45;white-space:pre-wrap}
 .ai-msg.user{align-self:flex-end;background:var(--accent);color:var(--accent-fg);border-bottom-right-radius:4px}
@@ -358,6 +375,11 @@ dialog .signature{margin:18px 0 4px;font-size:24px}
       </div>
       <button id="diaryToText" class="linkbtn">Eerst ingrediënten analyseren</button>
     </div>
+    <button id="complaintsOpen" class="card complaints-btn" type="button">
+      <svg viewBox="0 0 24 24"><path d="M9 4h6v3H9zM7 5.5H5v15h14v-15h-2"/><path d="M8.5 12h7M8.5 16h5"/></svg>
+      <span class="grow"><strong>Klachtenoverzicht</strong><span id="complaintsSub" class="muted small">Al je notities op een rij, voor je diëtiste</span></span>
+      <span class="chev" aria-hidden="true">›</span>
+    </button>
     <div id="diaryList"></div>
     <p id="diaryEmpty" class="muted small" hidden>Nog niets bijgehouden. Voeg hierboven je eerste item toe.</p>
   </section>
@@ -456,6 +478,25 @@ dialog .signature{margin:18px 0 4px;font-size:24px}
   </div>
   <div class="actions" style="margin-top:14px">
     <button id="diaryAddConfirm" class="btn" type="button">Toevoegen</button>
+  </div>
+</dialog>
+
+<dialog id="complaintsDialog">
+  <div class="ai-head">
+    <h2>Klachtenoverzicht</h2>
+    <button id="complaintsClose" type="button" aria-label="Sluiten">×</button>
+  </div>
+  <div class="chips" id="complaintsRange" style="margin-top:0">
+    <button type="button" class="chip" data-days="14">2 weken</button>
+    <button type="button" class="chip" data-days="28">4 weken</button>
+    <button type="button" class="chip" data-days="0">Alles</button>
+  </div>
+  <label class="cmp-toggle"><input id="complaintsShowFood" type="checkbox" checked> Toon wat ik die dag at</label>
+  <p id="complaintsSummary" class="muted small" style="margin:6px 0 8px"></p>
+  <div id="complaintsList" class="cmp-list"></div>
+  <p id="complaintsStatus" class="msg" hidden aria-live="polite"></p>
+  <div class="actions" style="margin-top:10px;flex:none">
+    <button id="complaintsShare" class="btn" type="button">Delen / kopiëren</button>
   </div>
 </dialog>
 
