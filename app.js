@@ -64,7 +64,7 @@
   //  3.0.1 - AI-uitlezing geeft de ingrediëntenlijst altijd in het Nederlands (vertaalt Poolse,
   //          Italiaanse e.d. etiketten), zodat bijv. "mąka pszenna" als tarwebloem herkend wordt
   //  3.0.2 - AI via eigen route /fodmap-ai (werkte niet meer sinds de login-eis op /anthropic)
-  const APP_VERSION = '3.2.1';
+  const APP_VERSION = '3.2.2';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -1999,7 +1999,22 @@
   updateOnline();
 
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => { }));
+    // Nieuwe versie actief → één keer automatisch herladen, zodat je meteen de update ziet
+    const hadController = !!navigator.serviceWorker.controller;
+    let swReloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || swReloaded) return;
+      swReloaded = true;
+      location.reload();
+    });
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
+        // bij terugkeren naar de app (uit de achtergrond) checken op een update
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => { });
+        });
+      }).catch(() => { });
+    });
   }
 
   // ---------- start ----------

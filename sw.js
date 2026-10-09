@@ -1,13 +1,14 @@
 /* Service worker: app-shell offline beschikbaar (stale-while-revalidate).
  * Verhoog CACHE bij een update als je wilt dat iedereen direct de nieuwe versie krijgt. */
-const CACHE = 'fodmap-scanner-v37';
+const CACHE = 'fodmap-scanner-v38';
 const ASSETS = [
   './', './index.html', './app.js', './fodmap.js', './foods.js', './manifest.json',
   './icon-192.png', './icon-512.png', './icon-maskable-512.png'
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' = altijd vers van de server, niet uit de (10 min) HTTP-cache van GitHub Pages
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -26,7 +27,7 @@ self.addEventListener('fetch', e => {
 
   e.respondWith(caches.open(CACHE).then(async cache => {
     const cached = await cache.match(req, { ignoreSearch: true });
-    const net = fetch(req).then(res => {
+    const net = fetch(req, { cache: 'no-cache' }).then(res => {
       if (res && res.ok) cache.put(req, res.clone());
       return res;
     }).catch(() => null);
