@@ -64,7 +64,7 @@
   //  3.0.1 - AI-uitlezing geeft de ingrediëntenlijst altijd in het Nederlands (vertaalt Poolse,
   //          Italiaanse e.d. etiketten), zodat bijv. "mąka pszenna" als tarwebloem herkend wordt
   //  3.0.2 - AI via eigen route /fodmap-ai (werkte niet meer sinds de login-eis op /anthropic)
-  const APP_VERSION = '3.2.0';
+  const APP_VERSION = '3.2.1';
 
   // AI-assistent: hergebruikt de generieke /anthropic-route van de bestaande toto-proxy Worker
   // (zelfde ANTHROPIC_KEY-secret als TOTO AI). Geen eigen backend nodig voor deze app.
@@ -117,12 +117,13 @@
   let pendingBarcode = '';
 
   const enabled = () => new Set(settings.groups);
-  const LV = { high: 'high', moderate: 'mod', unsure: 'unsure', none: 'none', low: 'low', beerLow: 'low' };
+  const LV = { high: 'high', moderate: 'mod', unsure: 'unsure', none: 'none', low: 'low', beerLow: 'low', traceLow: 'low' };
   const VERDICT = {
     high: { cls: 'high', title: 'Hoog FODMAP', sub: 'Bevat ingrediënten die vaak klachten geven.' },
     moderate: { cls: 'mod', title: 'Matig FODMAP', sub: 'Bij dit product is de portiegrootte bepalend.' },
     low: { cls: 'low', title: 'Geen FODMAP-ingrediënten gevonden', sub: 'Op basis van de ingrediëntenlijst en jouw instellingen.' },
     unknown: { cls: 'unk', title: 'Geen ingrediënten beschikbaar', sub: 'Plak de ingrediëntenlijst zelf om te controleren.' },
+    traceLow: { cls: 'low', title: 'Laag FODMAP — alleen een spoortje lactose', sub: 'Er zit lactose in, maar pas na het zout of helemaal achteraan de lijst. Zo weinig geeft bij een normale portie zelden klachten.' },
     beerLow: { cls: 'low', title: 'Laag FODMAP bij 1 glas/flesje', sub: 'Bier wordt van mout gebrouwen, maar de fructanen worden tijdens het brouwen grotendeels vergist. Volgens Monash is bier laag-FODMAP tot ongeveer 375 ml (1 flesje of blikje). Meer drinken of alcohol zelf kan de darm los daarvan wel prikkelen.' },
     garbled: { cls: 'unk', title: 'Tekst niet leesbaar', sub: 'De foto is niet goed gelezen: de ingrediëntentekst is grotendeels wartaal, dus er kan van alles in zitten dat niet herkend is. Maak een nieuwe foto van alleen de ingrediëntenlijst: recht ervoor, dichtbij, goed licht en zonder glimmende plekken. Of typ de lijst over.' },
     notList: { cls: 'unk', title: 'Geen ingrediëntenlijst herkend', sub: 'De tekst lijkt op een voedingswaardetabel of wervende tekst van de verpakking, niet op een ingrediëntenlijst. De uitslag is daarom niet betrouwbaar. Maak een foto van alleen het stuk na “Ingrediënten:” of typ de lijst over.' },
@@ -1097,7 +1098,7 @@
       const res = analyzeData(it);
       const k = res.key;
       return h('li', null,
-        h('span', { class: 'dot ' + (k === 'high' ? 'high' : k === 'moderate' ? 'mod' : (k === 'low' || k === 'beerLow') ? 'low' : 'unsure'), style: 'margin-top:6px' }),
+        h('span', { class: 'dot ' + (k === 'high' ? 'high' : k === 'moderate' ? 'mod' : (k === 'low' || k === 'beerLow' || k === 'traceLow') ? 'low' : 'unsure'), style: 'margin-top:6px' }),
         it.photoId && it.image ? h('img', { src: it.image, alt: '', style: 'width:40px;height:40px;object-fit:cover;border-radius:6px;flex:none' }) : null,
         h('button', { class: 'plain grow', onclick: () => show($('#histResult'), it, false) },
           h('b', { text: it.title }),

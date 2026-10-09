@@ -360,7 +360,10 @@
     return out.map(s => s.trim()).filter(Boolean);
   }
 
-  const RANK = { high: 3, moderate: 2, unsure: 1 };
+  const RANK = { high: 3, moderate: 2, unsure: 1, low: 0 };
+  const SALT_RE = /^((zee|keuken|jodium|bak)?zout|salt|sea salt|sel( de mer)?|salz|meersalz|sale|sal)\b/;
+  const TRACE_NOTE_SALT = 'Staat ná het zout, dus maar een spoortje (meestal minder dan 1–2%). Bij een normale portie geeft dat zelden klachten; ben je erg gevoelig, let dan op.';
+  const TRACE_NOTE_END = 'Staat helemaal achteraan de lijst, dus waarschijnlijk maar een spoortje. Bij een normale portie geeft dat zelden klachten; ben je erg gevoelig, let dan op.';
 
   const LACTASE_RE = new RegExp(B + 'lactase' + A, 'u');
 
@@ -413,6 +416,28 @@
       return { text: t, index: i + 1, hits, level };
     });
 
+    // Spoortje lactose: alles wat ná het zout staat is meestal < 1-2% van het product
+    // (Monash-vuistregel). Lactose in die hoeveelheid geeft bij een normale portie
+    // nauwelijks klachten. Zonder zout: alleen het laatste kwart van een lange lijst.
+    const saltIdx = items.findIndex(it => SALT_RE.test(norm(it.text)));
+    const traceFrom = saltIdx >= 0 ? saltIdx + 1 : (items.length >= 8 ? Math.ceil(items.length * 0.75) : Infinity);
+    let traceLactose = false;
+    items.forEach((it, i) => {
+      if (i < traceFrom) return;
+      let changed = false;
+      it.hits.forEach(h => {
+        if (h.active && h.level === 'high' && h.groups.length === 1 && h.groups[0] === 'lactose') {
+          h.level = 'low'; h.trace = true; changed = true;
+          h.note = saltIdx >= 0 ? TRACE_NOTE_SALT : TRACE_NOTE_END;
+        }
+      });
+      if (changed) {
+        traceLactose = true;
+        it.level = it.hits.some(h => h.active && h.level === 'high') ? 'high'
+          : it.hits.some(h => h.active && h.level === 'moderate') ? 'moderate' : 'low';
+      }
+    });
+
     const map = new Map();
     items.forEach(it => it.hits.forEach(h => {
       if (!h.active) return;
@@ -420,6 +445,9 @@
       if (!a) {
         a = { id: h.id, name: h.name, level: h.level, groups: h.groups, note: h.note, first: it.index, count: 0, terms: [] };
         map.set(h.id, a);
+      } else if (RANK[h.level] > (RANK[a.level] || 0)) {
+        // zelfde ingrediënt staat ook vóór het zout: de hoge score telt
+        a.level = h.level; a.note = h.note;
       }
       a.count++;
       if (!a.terms.includes(h.term)) a.terms.push(h.term);
@@ -429,6 +457,7 @@
     let verdict = 'low';
     if (hits.some(h => h.level === 'high')) verdict = 'high';
     else if (hits.some(h => h.level === 'moderate')) verdict = 'moderate';
+    else if (traceLactose && hits.some(h => h.id === 'lactose' && h.level === 'low')) verdict = 'traceLow';
 
     return { verdict, total: tokens.length, hits, items, hardCheese, noSugar };
   }
